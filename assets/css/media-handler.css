@@ -1,0 +1,384 @@
+/* Herbal Mix Creator - Media Handler Styles */
+
+/* Container dla przesyłania obrazu */
+.custom-file-upload {
+    margin-bottom: 15px;
+}
+
+.image-upload-row {
+    margin-bottom: 25px;
+}
+
+/* Podgląd obrazu */
+.image-preview {
+    width: 150px;
+    height: 150px;
+    border: 2px dashed #ddd;
+    border-radius: 6px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: #fafafa;
+    margin-bottom: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.image-preview:hover {
+    border-color: #8AC249;
+    box-shadow: 0 0 0 2px rgba(138, 194, 73, 0.2);
+    transform: scale(1.02);
+}
+
+.image-preview.has-image {
+    border-style: solid;
+    border-color: #8AC249;
+}
+
+.image-preview.has-image .upload-prompt {
+    display: none;
+}
+
+/* Prompt przesyłania */
+.upload-prompt {
+    text-align: center;
+    color: #999;
+    padding: 20px;
+    user-select: none;
+}
+
+.upload-prompt span {
+    font-size: 13px;
+    margin-top: 8px;
+    display: block;
+}
+
+.upload-icon {
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 10px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.image-preview:hover .upload-icon {
+    opacity: 1;
+}
+
+/* Pasek postępu */
+.upload-progress-container {
+    margin: 10px 0;
+    padding: 10px;
+    background-color: #f8f8f8;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.upload-progress-bar-wrapper {
+    height: 12px;
+    background-color: #e9ecef;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.upload-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #8AC249 0%, #2a6a3c 100%);
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 6px;
+    position: relative;
+}
+
+.upload-progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 35%, rgba(255,255,255,0.2) 35%, rgba(255,255,255,0.2) 65%, transparent 65%);
+    background-size: 10px 10px;
+    animation: progress-stripes 1s linear infinite;
+}
+
+@keyframes progress-stripes {
+    0% { background-position: 0 0; }
+    100% { background-position: 10px 0; }
+}
+
+.upload-progress-text {
+    font-size: 12px;
+    color: #6c757d;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* Przyciski */
+.image-upload-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.herbal-mix-select-image-btn,
+.herbal-mix-remove-image-btn {
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+}
+
+.herbal-mix-select-image-btn {
+    background-color: #2a6a3c;
+    border-color: #2a6a3c;
+    color: white;
+}
+
+.herbal-mix-select-image-btn:hover:not(:disabled) {
+    background-color: #1d4c2a;
+    border-color: #1d4c2a;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(42, 106, 60, 0.3);
+}
+
+.herbal-mix-select-image-btn:disabled {
+    background-color: #cccccc;
+    border-color: #cccccc;
+    color: #666666;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.herbal-mix-remove-image-btn {
+    background-color: #ffffff;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.herbal-mix-remove-image-btn:hover:not(:disabled) {
+    background-color: #dc3545;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+.herbal-mix-remove-image-btn:disabled {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+    color: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Komunikaty */
+.field-hint {
+    font-size: 13px;
+    color: #6c757d;
+    margin: 5px 0;
+    line-height: 1.4;
+}
+
+.error-message {
+    color: #dc3545;
+    font-size: 13px;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+    display: none;
+}
+
+.success-message {
+    color: #155724;
+    font-size: 13px;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 4px;
+    display: none;
+}
+
+/* Stany loading */
+.herbal-mix-select-image-btn.uploading {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+    cursor: not-allowed;
+    position: relative;
+}
+
+.herbal-mix-select-image-btn.uploading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsywność */
+@media (max-width: 768px) {
+    .image-preview {
+        width: 120px;
+        height: 120px;
+    }
+    
+    .image-upload-buttons {
+        flex-direction: column;
+    }
+    
+    .herbal-mix-select-image-btn,
+    .herbal-mix-remove-image-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .upload-prompt span {
+        font-size: 12px;
+    }
+    
+    .upload-icon {
+        width: 30px;
+        height: 30px;
+    }
+}
+
+/* Warianty rozmiaru podglądu */
+.image-preview.size-small {
+    width: 100px;
+    height: 100px;
+}
+
+.image-preview.size-medium {
+    width: 150px;
+    height: 150px;
+}
+
+.image-preview.size-large {
+    width: 200px;
+    height: 200px;
+}
+
+/* Wariant kwadratowy vs prostokątny */
+.image-preview.aspect-square {
+    aspect-ratio: 1 / 1;
+}
+
+.image-preview.aspect-rectangle {
+    aspect-ratio: 16 / 9;
+    width: 200px;
+    height: auto;
+}
+
+/* Style dla różnych typów pól */
+.image-upload-row.avatar-upload .image-preview {
+    border-radius: 50%;
+    width: 120px;
+    height: 120px;
+}
+
+.image-upload-row.mix-image-upload .image-preview {
+    border-radius: 6px;
+}
+
+/* Overlay dla podglądu z obrazem */
+.image-preview.has-image::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0);
+    transition: background 0.2s ease;
+    border-radius: inherit;
+}
+
+.image-preview.has-image:hover::before {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.image-preview.has-image::after {
+    content: '✎';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 24px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.image-preview.has-image:hover::after {
+    opacity: 1;
+}
+
+/* Drag and drop states */
+.image-preview.drag-over {
+    border-color: #8AC249;
+    background-color: rgba(138, 194, 73, 0.1);
+    transform: scale(1.05);
+}
+
+.image-preview.drag-over .upload-prompt {
+    color: #2a6a3c;
+}
+
+.image-preview.drag-over .upload-icon {
+    opacity: 1;
+}
+
+/* Accessibility */
+.herbal-mix-select-image-btn:focus,
+.herbal-mix-remove-image-btn:focus,
+.image-preview:focus {
+    outline: 2px solid #8AC249;
+    outline-offset: 2px;
+}
+
+/* Print styles */
+@media print {
+    .image-upload-buttons,
+    .upload-progress-container {
+        display: none;
+    }
+    
+    .image-preview {
+        border: 1px solid #000;
+    }
+}

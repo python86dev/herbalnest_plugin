@@ -1,0 +1,206 @@
+/* Ulepszony wygląd strony My Account */
+.woocommerce-MyAccount-navigation {
+    background-color: #f7f7f7;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.woocommerce-MyAccount-navigation ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.woocommerce-MyAccount-navigation ul li {
+    margin-bottom: 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.woocommerce-MyAccount-navigation ul li a {
+    display: block;
+    padding: 12px 15px;
+    text-decoration: none;
+    color: #555;
+    font-weight: 500;
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.woocommerce-MyAccount-navigation ul li:hover {
+    background-color: #eee;
+}
+
+.woocommerce-MyAccount-navigation ul li.is-active {
+    background-color: #fff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.woocommerce-MyAccount-navigation ul li.is-active a {
+    color: #2a6a3c;
+    border-left-color: #2a6a3c;
+}
+
+.woocommerce-MyAccount-content {
+    background-color: #fff;
+    border-radius: 8px;
+    padding: 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.woocommerce-MyAccount-content h2 {
+    color: #2a6a3c;
+    margin-top: 0;
+    margin-bottom: 25px;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.woocommerce-MyAccount-content p {
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+
+/* Style dla przycisków */
+.woocommerce-MyAccount-content .button {
+    display: inline-block;
+    padding: 10px 20px;
+    background-color: #2a6a3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.woocommerce-MyAccount-content .button:hover {
+    background-color: #1d4c2a;
+}
+
+.woocommerce-MyAccount-content .button.button-secondary {
+    background-color: #f7f7f7;
+    color: #555;
+    border: 1px solid #ddd;
+}
+
+.woocommerce-MyAccount-content .button.button-secondary:hover {
+    background-color: #eee;
+}
+
+/* Układ My Account na większych ekranach */
+@media (min-width: 769px) {
+    .woocommerce-account .woocommerce {
+        display: flex;
+        gap: 30px;
+    }
+    
+    .woocommerce-MyAccount-navigation {
+        flex: 0 0 250px;
+    }
+    
+    .woocommerce-MyAccount-content {
+        flex: 1;
+    }
+}
+
+/* Poprawka dla mobilnych urządzeń */
+@media (max-width: 768px) {
+    .woocommerce-MyAccount-navigation,
+    .woocommerce-MyAccount-content {
+        margin-bottom: 20px;
+    }
+}
+
+/* Ładowanie tego stylu w klasie */
+.woocommerce-form-row label {
+    font-weight: 500;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.woocommerce-form-row input,
+.woocommerce-form-row textarea,
+.woocommerce-form-row select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Style dla tabeli zamówień */
+.woocommerce-orders-table,
+.woocommerce-table--order-details {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 30px;
+}
+
+.woocommerce-orders-table th,
+.woocommerce-orders-table td,
+.woocommerce-table--order-details th,
+.woocommerce-table--order-details td {
+    padding: 15px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.woocommerce-orders-table th,
+.woocommerce-table--order-details th {
+    background-color: #f7f7f7;
+    font-weight: 600;
+}
+
+.woocommerce-orders-table tr:hover,
+.woocommerce-table--order-details tbody tr:hover {
+    background-color: #f9f9f9;
+}
+
+/* Strona adresów */
+.woocommerce-Address {
+    background-color: #f9f9f9;
+    border-radius: 6px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.woocommerce-Address-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.woocommerce-Address-title h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #2a6a3c;
+}
+
+/* Wiadomości i alerty */
+.woocommerce-message,
+.woocommerce-info,
+.woocommerce-error {
+    padding: 15px 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    border-left: 4px solid;
+}
+
+.woocommerce-message {
+    background-color: #f0f8f1;
+    border-left-color: #2a6a3c;
+}
+
+.woocommerce-info {
+    background-color: #f0f7fb;
+    border-left-color: #3d9cd2;
+}
+
+.woocommerce-error {
+    background-color: #fff6f6;
+    border-left-color: #d63638;
+}

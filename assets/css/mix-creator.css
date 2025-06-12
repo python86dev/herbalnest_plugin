@@ -1,0 +1,682 @@
+/* assets/css/mix-creator.css */
+
+/* Ogólne style wrappera formularza */
+.herbal-mix-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  color: #333;
+}
+
+/* Nagłówek i opis */
+.herbal-mix-wrapper h1 {
+  margin-bottom: 8px;
+  font-size: 1.75rem;
+  text-align: center;
+}
+.creator-description {
+  margin-bottom: 24px;
+  text-align: center;
+  color: #555;
+}
+
+/* Formularz */
+.herbal-mix-form {
+  background: #fafafa;
+  padding: 24px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Sekcja opakowań */
+.packaging-section {
+  margin-bottom: 32px;
+}
+.packaging-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+.packaging-item {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.packaging-item.selected,
+.packaging-item:hover {
+  border-color: #007cba;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.packaging-thumb {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  margin: 0 auto 8px;
+  border-radius: 4px;
+}
+.packaging-item h3 {
+  margin: 8px 0 4px;
+  font-size: 1rem;
+  color: #333;
+}
+.packaging-item p {
+  margin: 2px 0;
+  font-size: .875rem;
+  color: #555;
+}
+
+/* Kontener główny kolumn */
+.mix-container {
+  display: flex;
+  gap: 24px;
+}
+@media (max-width: 768px) {
+  .mix-container {
+    flex-direction: column;
+  }
+}
+
+/* Lewa kolumna: wykres i podsumowanie */
+.left-column {
+  flex: 1;
+}
+.chart-container {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+/* Styl dla informacji o punktach w opakowaniach */
+.points-info {
+  font-size: 0.8rem;
+  color: #007cba;
+  margin: 2px 0;
+}
+
+/* Aktualizacja podsumowania - wygląd informacji o punktach */
+.mix-summary p {
+  margin: 8px 0;
+  font-size: 0.95rem;
+}
+
+.mix-summary #total-points-cost,
+.mix-summary #total-points-earned {
+  font-weight: bold;
+  color: #007cba;
+}
+
+/* Ikona punktów (jeśli taka istnieje) */
+.points-icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+/* Prawa kolumna: wyszukiwarka, kategorie, składniki */
+.right-column {
+  flex: 1;
+}
+.search-box {
+  margin-bottom: 16px;
+}
+#ingredient-search {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Sekcja kategorii */
+.categories-section {
+  margin-bottom: 16px;
+}
+.categories-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 8px 0;
+  list-style: none;
+}
+.category-item {
+  display: inline-block;
+  padding: 6px 12px;
+  font-size: .875rem;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  background: #f0f0f0;
+  cursor: pointer;
+  transition: background .2s, border-color .2s;
+}
+.category-item.selected,
+.category-item:hover {
+  background: #007cba;
+  border-color: #007cba;
+  color: #fff;
+}
+
+/* Sekcja składników - NOWY UKŁAD */
+.ingredients-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* NOWA STRUKTURA SKŁADNIKA */
+.ingredient-item {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: box-shadow .2s;
+  position: relative;
+}
+
+.ingredient-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.ingredient-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.ingredient-thumb-container {
+  flex: 0 0 50px;
+}
+
+.ingredient-thumb {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.ingredient-content {
+  flex: 1 1 auto;
+}
+
+.ingredient-content h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.ingredient-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.add-ingredient-btn {
+  padding: 6px 12px;
+  background: #007cba;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: .875rem;
+  cursor: pointer;
+  transition: background .2s;
+}
+
+.add-ingredient-btn:hover:not(:disabled) {
+  background: #005f94;
+}
+
+.add-ingredient-btn:disabled {
+  background: #ccc;
+  cursor: default;
+}
+
+.info-icon {
+  width: 24px;
+  height: 24px;
+  background: #007cba;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.info-icon:hover {
+  background-color: #005f94;
+}
+
+/* Pole disabled (search, sekcje) */
+.categories-section.disabled,
+.ingredients-section.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Mix name */
+.mix-name-input {
+  margin: 24px 0;
+}
+#mix-name {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+/* Przyciski */
+.action-buttons {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.button,
+.add-ingredient-btn {
+  transition: background .2s, color .2s;
+}
+.button {
+  padding: 10px 20px;
+  border: 1px solid #007cba;
+  background: #fff;
+  color: #007cba;
+  border-radius: 4px;
+  font-size: .95rem;
+  cursor: pointer;
+}
+.button:hover:not(:disabled) {
+  background: #007cba;
+  color: #fff;
+}
+.button-primary {
+  background: #007cba;
+  color: #fff;
+  border-color: #007cba;
+}
+.button-primary:hover:not(:disabled) {
+  background: #005f94;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Komunikat logowania */
+.must-login {
+  text-align: center;
+  font-size: 1rem;
+  color: #a00;
+}
+/* Dodaj te style na końcu pliku mix-creator.css */
+
+/* Stylowanie wybranych składników */
+.selected-section {
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.selected-section h3 {
+  margin-bottom: 16px;
+  font-size: 1.25rem;
+  color: #333;
+}
+
+.selected-ingredient {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  transition: background-color 0.2s;
+}
+
+.selected-ingredient:hover {
+  background-color: #f0f0f0;
+}
+
+.selected-ingredient-info {
+  display: flex;
+  align-items: center;
+  width: 200px;
+  margin-right: 12px;
+}
+
+.selected-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-right: 10px;
+}
+
+.ingredient-name {
+  font-weight: 500;
+  flex-grow: 1;
+}
+
+.slider-container {
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  margin: 0 15px;
+}
+
+.ingredient-slider {
+  flex-grow: 1;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.weight-label {
+  font-size: 0.9rem;
+  color: #555;
+  width: 40px;
+  text-align: right;
+}
+
+.selected-ingredient-price {
+  width: 70px;
+  text-align: right;
+  margin-right: 15px;
+}
+
+.price-label {
+  font-weight: 500;
+  color: #007cba;
+}
+
+.remove-ingredient-btn {
+  background: #ff5252;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.remove-ingredient-btn:hover {
+  background: #e04343;
+}
+
+/* Poprawki dla wyświetlania na małych ekranach */
+@media (max-width: 768px) {
+  .selected-ingredient {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  
+  .selected-ingredient-info {
+    width: 100%;
+  }
+  
+  .slider-container {
+    margin: 5px 0;
+  }
+  
+  .selected-ingredient-price {
+    width: 100%;
+    text-align: left;
+    margin-right: 0;
+  }
+  
+  .remove-ingredient-btn {
+    align-self: flex-end;
+    margin-top: -30px;
+  }
+  
+  /* Dostosowujemy układ składnika na małych ekranach */
+  .ingredient-item {
+    flex-wrap: wrap;
+  }
+  
+  .ingredient-content {
+    flex: 1 1 calc(100% - 80px);
+  }
+  
+  .ingredient-actions {
+    margin-top: 8px;
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* Styl dla przycisku, który jest już dodany */
+.add-ingredient-btn[disabled] {
+  background: #8ac249;
+}
+
+/* Styl dla wymaganego pola nazwy */
+.required-field {
+  border-color: #e2401c ;
+  box-shadow: 0 0 0 1px #e2401c !important;
+}
+
+.required-field::placeholder {
+  color: #e2401c;
+}
+
+/* Dodaj informację o wymaganym polu */
+.mix-name-input.show-required-hint::after {
+  content: "Required for adding to basket";
+  display: block;
+  color: #e2401c;
+  font-size: 0.8rem;
+  margin-top: 3px;
+}
+
+/* ---- STYLE DLA TOOLTIPÓW ---- */
+/* Styl dla tooltipów składników */
+.ingredient-tooltip {
+  position: relative;
+}
+
+/* 1. Zmieniamy pozycję tooltipa dla desktopów (ponad 768px) */
+@media (min-width: 769px) {
+  .ingredient-tooltip-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 360px;
+    max-width: 50vw;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 15px;
+    z-index: 1000;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+  
+  /* Dodaj ciemne tło gdy tooltip jest aktywny */
+  .tooltip-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 999;
+    display: none;
+  }
+  
+  .info-icon.active + .tooltip-backdrop {
+    display: block;
+  }
+  
+  /* Usuń strzałkę tooltipa gdyż już nie jest dołączony do konkretnego elementu */
+  .ingredient-tooltip-content:before {
+    display: none;
+  }
+}
+
+/* 2. Poprawimy wygląd i pozycję tooltipa dla telefonów */
+@media (max-width: 768px) {
+  .ingredient-tooltip-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 85%;
+    max-width: 350px;
+    max-height: 80vh;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 15px;
+    z-index: 1000;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+  }
+  
+  /* Poprawiamy przycisk zamykania tooltipa */
+  .ingredient-tooltip-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #e0e0e0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    z-index: 1001;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+}
+
+/* Wspólne style dla wszystkich urządzeń */
+.ingredient-tooltip-close:hover {
+  background: #ccc;
+}
+
+.ingredient-tooltip-header {
+  position: relative;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.ingredient-tooltip-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+  color: #007cba;
+  padding-right: 30px; /* Miejsce na przycisk zamknięcia */
+}
+
+.ingredient-tooltip-image {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.ingredient-tooltip-description, 
+.ingredient-tooltip-story {
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.ingredient-tooltip-label {
+  font-weight: bold;
+  display: block;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  color: #007cba;
+}
+
+.ingredient-tooltip-properties {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.ingredient-tooltip-property {
+  background: #f0f8ff;
+  padding: 3px 8px;
+  border-radius: 12px;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  font-size: 0.8rem;
+}
+
+/* Zapobiegamy zamykaniu tooltipa podczas scrollowania */
+.modal-backdrop.fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 998;
+  background: rgba(0,0,0,0.5);
+}
+
+/* Dodatkowe style dla aktywnego tooltipa */
+.active-tooltip {
+  background-color: white !important;
+}
+
+/* Dodaj na końcu pliku mix-creator.css */
+.chart-container {
+  width: 100%;
+  margin-bottom: 16px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Style dla legendy */
+#mixChart + ul.chart-legend {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  text-align: center;
+}
+
+#mixChart + ul.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 15px;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#mixChart + ul.chart-legend li span {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  border-radius: 2px;
+}

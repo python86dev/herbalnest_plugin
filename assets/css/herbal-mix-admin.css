@@ -1,0 +1,69 @@
+/* Herbal Mix Admin Styles */
+.ingredients-section {
+    margin-top: 20px;
+}
+
+.ingredients-table {
+    width: 100%;
+    margin-bottom: 15px;
+}
+
+.ingredients-table th, 
+.ingredients-table td {
+    padding: 8px;
+}
+
+.add-ingredient-form {
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#ingredient_select {
+    min-width: 250px;
+}
+
+#ingredient_weight {
+    width: 80px;
+}
+
+.remove-ingredient {
+    color: #a00;
+}
+
+.remove-ingredient:hover {
+    color: #dc3232;
+}
+
+#total_weight_row {
+    font-weight: 500;
+}
+
+.weight-error {
+    color: #dc3232;
+}
+
+.error-message {
+    color: #dc3232;
+    font-style: italic;
+    font-size: 0.9em;
+}
+
+.packaging-info {
+    background: #f8f8f8;
+    border: 1px solid #e5e5e5;
+    border-left: 4px solid #2ea2cc;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+}
+
+.packaging-info h4 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    color: #23282d;
+}
+
+.packaging-info p {
+    margin: 5px 0;
+}
