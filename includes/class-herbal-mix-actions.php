@@ -1,6 +1,10 @@
 <?php
 /**
  * Handles actions for user-created herbal mixes: Buy, Publish, View, Delete.
+ * File: includes/class-herbal-mix-actions.php
+ * 
+ * UPDATED: Integrated with existing profile.js and user profile extended system
+ * Uses AJAX handlers from HerbalMixUserProfileExtended class instead of GET requests
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -8,13 +12,22 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class HerbalMixActions {
 
     public function __construct() {
-        add_action( 'init', array( $this, 'handle_mix_actions' ) );
+        // Legacy GET request handler for backwards compatibility
+        add_action( 'init', array( $this, 'handle_legacy_mix_actions' ) );
         
         // Add display of author and ingredients on product page
         add_action('woocommerce_single_product_summary', array($this, 'display_herbal_mix_details'), 25);
+        
+        // Integration with existing AJAX system from user profile extended
+        add_action('wp_ajax_herbal_mix_action_redirect', array($this, 'ajax_redirect_handler'));
+        add_action('wp_ajax_nopriv_herbal_mix_action_redirect', array($this, 'ajax_redirect_handler'));
     }
 
-    public function handle_mix_actions() {
+    /**
+     * Legacy GET request handler for backwards compatibility
+     * Now redirects to proper AJAX endpoints or My Account page
+     */
+    public function handle_legacy_mix_actions() {
         if ( ! is_user_logged_in() || ! isset( $_GET['action'], $_GET['mix_id'] ) ) {
             return;
         }
@@ -28,77 +41,121 @@ class HerbalMixActions {
         $mix   = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d AND user_id = %d", $mix_id, $user_id ) );
 
         if ( ! $mix ) {
-            wp_die( 'Mix not found or permission denied.' );
+            wp_die( __('Mix not found or permission denied.', 'herbal-mix-creator2') );
         }
 
         switch ( $action ) {
             case 'buy_mix':
-                $this->create_virtual_product_and_add_to_cart( $mix );
-                break;
+                // Redirect to My Account with buy action
+                $redirect_url = $this->get_my_account_url_with_action('buy', $mix_id);
+                wp_redirect( $redirect_url );
+                exit;
+                
             case 'publish_mix':
-                $product_id = $this->create_public_product( $mix );
-                if ($product_id) {
-                    wp_redirect( get_permalink( $product_id ) );
-                    exit;
-                }
-                wp_die( 'Failed to publish product.' );
-                break;
+                // Redirect to My Account with publish action  
+                $redirect_url = $this->get_my_account_url_with_action('publish', $mix_id);
+                wp_redirect( $redirect_url );
+                exit;
+                
             case 'delete_mix':
-                // NOWE: Obsługa usuwania mieszanki przez GET (fallback)
-                $this->handle_delete_mix_get( $mix, $user_id );
+                // Handle deletion immediately for GET requests (backwards compatibility)
+                $this->handle_delete_mix_legacy( $mix, $user_id );
                 break;
+                
             case 'view_mix':
-                $edit_url = add_query_arg( array( 'mix_id' => $mix_id ), site_url( '/edit-my-mix' ) );
-                wp_redirect( $edit_url );
+                // Check if published and has product page
+                if ($mix->status === 'published' && $mix->base_product_id) {
+                    $product_url = get_permalink($mix->base_product_id);
+                    if ($product_url) {
+                        wp_redirect($product_url);
+                        exit;
+                    }
+                }
+                
+                // Otherwise redirect to My Account
+                $redirect_url = $this->get_my_account_url();
+                wp_redirect( $redirect_url );
                 exit;
         }
     }
 
     /**
-     * NOWA METODA: Obsługuje usuwanie mieszanki przez GET request (fallback)
+     * AJAX redirect handler for frontend integration
      */
-    private function handle_delete_mix_get( $mix, $user_id ) {
+    public function ajax_redirect_handler() {
+        if (!wp_verify_nonce($_POST['nonce'], 'herbal_mix_actions')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        $action = sanitize_text_field($_POST['action_type']);
+        $mix_id = intval($_POST['mix_id']);
+        
+        switch ($action) {
+            case 'buy':
+                // This should be handled by the existing ajax_buy_mix in user profile extended
+                wp_send_json_success(array(
+                    'redirect' => 'ajax',
+                    'ajax_action' => 'buy_mix',
+                    'mix_id' => $mix_id
+                ));
+                break;
+                
+            case 'publish':
+                // This should be handled by the existing ajax_publish_mix in user profile extended
+                wp_send_json_success(array(
+                    'redirect' => 'ajax', 
+                    'ajax_action' => 'publish_mix',
+                    'mix_id' => $mix_id
+                ));
+                break;
+                
+            default:
+                wp_send_json_error('Invalid action');
+        }
+    }
+
+    /**
+     * Legacy delete handler for GET requests
+     */
+    private function handle_delete_mix_legacy( $mix, $user_id ) {
         global $wpdb;
         $table = $wpdb->prefix . 'herbal_mixes';
         
-        // Sprawdź status mieszanki
+        // Check if mix is published
         if ($mix->status === 'published') {
-            // Mieszanka publiczna - wyślij email do administratora
-            $this->send_published_mix_deletion_notification_get( $mix, $user_id );
+            // Send notification email to admin
+            $this->send_published_mix_deletion_notification( $mix, $user_id );
         }
         
-        // Usuń mieszankę z bazy
+        // Delete mix from database
         $wpdb->delete( $table, array( 'id' => $mix->id ) );
         
-        // Przekieruj do strony My Mixes z komunikatem
-        $redirect_url = $this->get_my_mixes_url_with_message( $mix->status );
+        // Redirect to My Account with success message
+        $redirect_url = $this->get_my_account_url_with_message( $mix->status );
         wp_redirect( $redirect_url );
         exit;
     }
 
     /**
-     * NOWA METODA: Wysyła powiadomienie email (wersja dla GET request)
+     * Send email notification for published mix deletion
      */
-    private function send_published_mix_deletion_notification_get( $mix, $user_id ) {
-        // Pobierz informacje o użytkowniku
+    private function send_published_mix_deletion_notification( $mix, $user_id ) {
+        // Get user information
         $user = get_user_by('id', $user_id);
         $user_name = $user ? ($user->display_name ?: $user->user_login) : 'Unknown User';
         $user_email = $user ? $user->user_email : 'unknown@example.com';
         
-        // Przygotuj dane mieszanki
-        $mix_data = json_decode($mix->mix_data, true);
-        
-        // Email administratora
+        // Get admin email
         $admin_email = get_option('admin_email');
         
-        // Temat emaila
+        // Email subject
         $subject = sprintf(
             '[%s] Published Mix Deletion Request - %s',
             get_bloginfo('name'),
             $mix->mix_name
         );
         
-        // Treść emaila
+        // Email content
         $message = sprintf(
             "Hello Administrator,\n\n" .
             "A user has deleted a published herbal mix from their profile. " .
@@ -129,27 +186,46 @@ class HerbalMixActions {
             current_time('mysql')
         );
         
-        // Nagłówki emaila
+        // Email headers
         $headers = array(
             'Content-Type: text/plain; charset=UTF-8',
             sprintf('From: %s <%s>', get_bloginfo('name'), get_option('admin_email')),
             sprintf('Reply-To: %s <%s>', $user_name, $user_email)
         );
         
-        // Wyślij email
+        // Send email
         wp_mail($admin_email, $subject, $message, $headers);
     }
 
     /**
-     * NOWA METODA: Pobiera URL do My Mixes z komunikatem
+     * Get My Account URL with action parameters
      */
-    private function get_my_mixes_url_with_message( $mix_status ) {
+    private function get_my_account_url_with_action($action, $mix_id) {
+        $my_account_url = wc_get_page_permalink('myaccount');
+        
+        if ($my_account_url) {
+            $url = trailingslashit($my_account_url) . 'my-mixes/';
+            $url = add_query_arg(array(
+                'action' => $action,
+                'mix_id' => $mix_id
+            ), $url);
+            
+            return $url;
+        }
+        
+        return wc_get_page_permalink('myaccount') ?: home_url();
+    }
+
+    /**
+     * Get My Account URL with message
+     */
+    private function get_my_account_url_with_message( $mix_status ) {
         $my_account_url = wc_get_page_permalink('myaccount');
         
         if ($my_account_url) {
             $url = trailingslashit($my_account_url) . 'my-mixes/';
             
-            // Dodaj komunikat w zależności od statusu
+            // Add message based on status
             if ($mix_status === 'published') {
                 $url = add_query_arg('deleted', 'published', $url);
             } else {
@@ -159,22 +235,25 @@ class HerbalMixActions {
             return $url;
         }
         
-        // Fallback
         return wc_get_page_permalink('myaccount') ?: home_url();
     }
 
-    private function create_virtual_product_and_add_to_cart( $mix ) {
-        $product_id = $this->generate_product_from_mix( $mix, true );
-        if ( $product_id ) {
-            WC()->cart->add_to_cart( $product_id );
-            wp_redirect( wc_get_cart_url() );
-            exit;
+    /**
+     * Get My Account URL
+     */
+    private function get_my_account_url() {
+        $my_account_url = wc_get_page_permalink('myaccount');
+        
+        if ($my_account_url) {
+            return trailingslashit($my_account_url) . 'my-mixes/';
         }
-        wp_die( 'Failed to create virtual product.' );
+        
+        return wc_get_page_permalink('myaccount') ?: home_url();
     }
 
     /**
      * Creates a public product from a user's mix
+     * Used by the AJAX publish handler in HerbalMixUserProfileExtended
      * 
      * @param object $mix Mix data from database
      * @param float $price Optional product price (if not provided, will be calculated)
@@ -224,8 +303,8 @@ class HerbalMixActions {
         // Set price
         $product->set_regular_price(round($price, 2));
         
-        // Set product properties - CHANGED FROM VIRTUAL TO PHYSICAL
-        $product->set_virtual(false); // This is a physical product that requires shipping
+        // Set as physical product (requires shipping)
+        $product->set_virtual(false);
         $product->set_catalog_visibility('visible');
         $product->set_status('publish');
         
@@ -239,7 +318,7 @@ class HerbalMixActions {
             }
         }
         
-        // Get packaging information
+        // Get packaging information and set shipping parameters
         $packaging_weight = 20; // Default packaging weight in grams
         $packaging_dimensions = array(
             'length' => 10, // Default dimensions in cm
@@ -255,35 +334,28 @@ class HerbalMixActions {
                 intval($mix_data['packaging_id'])
             ));
             
-            if ($packaging) {
-                // You can add additional fields to packaging table to store these values
-                // For now we'll use default values based on capacity
-                if (isset($packaging->herb_capacity)) {
-                    $capacity = intval($packaging->herb_capacity);
-                    
-                    // Adjust packaging size based on capacity
-                    if ($capacity <= 50) {
-                        $packaging_weight = 20;
-                        $packaging_dimensions = array('length' => 8, 'width' => 8, 'height' => 4);
-                    } else if ($capacity <= 100) {
-                        $packaging_weight = 30;
-                        $packaging_dimensions = array('length' => 10, 'width' => 10, 'height' => 5);
-                    } else {
-                        $packaging_weight = 40;
-                        $packaging_dimensions = array('length' => 12, 'width' => 12, 'height' => 6);
-                    }
+            if ($packaging && isset($packaging->herb_capacity)) {
+                $capacity = intval($packaging->herb_capacity);
+                
+                // Adjust packaging size based on capacity
+                if ($capacity <= 50) {
+                    $packaging_weight = 20;
+                    $packaging_dimensions = array('length' => 8, 'width' => 8, 'height' => 4);
+                } else if ($capacity <= 100) {
+                    $packaging_weight = 30;
+                    $packaging_dimensions = array('length' => 10, 'width' => 10, 'height' => 5);
+                } else {
+                    $packaging_weight = 40;
+                    $packaging_dimensions = array('length' => 12, 'width' => 12, 'height' => 6);
                 }
             }
         }
         
         // Set shipping parameters
-        $product->set_weight($total_weight + $packaging_weight); // Weight in grams (sum of ingredients + packaging)
+        $product->set_weight($total_weight + $packaging_weight); // Weight in grams
         $product->set_length($packaging_dimensions['length']);
         $product->set_width($packaging_dimensions['width']);
         $product->set_height($packaging_dimensions['height']);
-        
-        // Optionally set shipping class
-        // $product->set_shipping_class_id(10); // Change to your shipping class ID if needed
         
         // Set SKU
         $product->set_sku('ECM-' . $mix->id);
@@ -291,15 +363,19 @@ class HerbalMixActions {
         // Save product to get ID
         $product_id = $product->save();
         
-        // Add product metadata
-        update_post_meta($product_id, '_price_points', round($points_price, 2));
-        update_post_meta($product_id, '_points_earned', $points_earned);
-        update_post_meta($product_id, '_herbal_mix_id', $mix->id);
+        if (!$product_id) {
+            return false;
+        }
+        
+        // Add product metadata using correct field names
+        update_post_meta($product_id, 'price_point', round($points_price, 2));
+        update_post_meta($product_id, 'point_earned', $points_earned);
+        update_post_meta($product_id, 'herbal_mix_id', $mix->id);
         update_post_meta($product_id, '_custom_mix_user', $mix->user_id);
         update_post_meta($product_id, '_custom_mix_author', $this->get_user_nickname($mix->user_id));
         
         // Save full mix data in metadata
-        update_post_meta($product_id, '_custom_mix_data', $mix->mix_data);
+        update_post_meta($product_id, 'herbal_mix_data', $mix->mix_data);
         update_post_meta($product_id, '_custom_mix_created', current_time('mysql'));
         
         // Add ingredients as separate metadata for easier access
@@ -338,15 +414,11 @@ class HerbalMixActions {
         update_post_meta($product_id, '_stock_status', 'instock');
         update_post_meta($product_id, '_manage_stock', 'no');
         
-        // Return product ID
         return $product_id;
     }
 
     /**
      * Calculate prices and points for a mix based on current data
-     *
-     * @param array $mix_data Mix data
-     * @return array Prices and points: ['price', 'points_price', 'points_earned']
      */
     private function calculate_mix_pricing($mix_data) {
         $total_price = 0;
@@ -401,32 +473,99 @@ class HerbalMixActions {
     }
 
     /**
+     * Generate product from mix (for both virtual and physical products)
+     * Used by the existing AJAX buy handler in HerbalMixUserProfileExtended
+     */
+    public function generate_product_from_mix($mix, $is_virtual = true) {
+        if (empty($mix->mix_data)) {
+            return false;
+        }
+        
+        $mix_data = json_decode($mix->mix_data, true);
+        if (!is_array($mix_data)) {
+            return false;
+        }
+        
+        // Calculate totals from current ingredient prices
+        $pricing = $this->calculate_mix_pricing($mix_data);
+        
+        // Create product
+        $product = new WC_Product_Simple();
+        
+        // Set product data
+        $product->set_name($mix->mix_name);
+        $product->set_description($mix->mix_description ?: 'Custom herbal mix');
+        $product->set_short_description(sprintf(
+            __('Custom herbal mix created by %s', 'herbal-mix-creator2'),
+            $this->get_user_nickname($mix->user_id)
+        ));
+        
+        // Set price
+        $product->set_regular_price($pricing['price']);
+        
+        // Set virtual/physical status
+        $product->set_virtual($is_virtual);
+        $product->set_downloadable(false);
+        
+        // Set visibility and status
+        $product->set_catalog_visibility($is_virtual ? 'hidden' : 'visible');
+        $product->set_status($is_virtual ? 'private' : 'publish');
+        
+        // Set stock status
+        $product->set_manage_stock(false);
+        $product->set_stock_status('instock');
+        
+        // Save product to get ID
+        $product_id = $product->save();
+        
+        if (!$product_id) {
+            return false;
+        }
+        
+        // Add metadata using correct field names
+        update_post_meta($product_id, 'price_point', $pricing['points_price']);
+        update_post_meta($product_id, 'point_earned', $pricing['points_earned']);
+        update_post_meta($product_id, 'herbal_mix_id', $mix->id);
+        update_post_meta($product_id, '_custom_mix_user', $mix->user_id);
+        update_post_meta($product_id, '_custom_mix_author', $this->get_user_nickname($mix->user_id));
+        update_post_meta($product_id, 'herbal_mix_data', $mix->mix_data);
+        update_post_meta($product_id, '_custom_mix_created', current_time('mysql'));
+        
+        // Handle product image
+        if (!empty($mix->mix_image)) {
+            $image_id = attachment_url_to_postid(esc_url($mix->mix_image));
+            if ($image_id) {
+                set_post_thumbnail($product_id, $image_id);
+            } else {
+                $this->set_image_from_url($product_id, $mix->mix_image);
+            }
+        }
+        
+        // Add to Custom Mix category for public products
+        if (!$is_virtual) {
+            $term = get_term_by('slug', 'custom-mix', 'product_cat');
+            if ($term) {
+                wp_set_post_terms($product_id, array($term->term_id), 'product_cat');
+            }
+        }
+        
+        return $product_id;
+    }
+
+    /**
      * Get user's nickname
-     *
-     * @param int $user_id User ID
-     * @return string Nickname or "Unknown User"
      */
     private function get_user_nickname($user_id) {
-        $user = get_user_by('id', $user_id);
-        if (!$user) {
-            return __('Unknown User', 'herbal-mix-creator2');
-        }
-        
         $nickname = get_user_meta($user_id, 'nickname', true);
         if (empty($nickname)) {
-            // Fallback to display_name if nickname not set
-            return $user->display_name;
+            $user = get_user_by('id', $user_id);
+            $nickname = $user ? $user->display_name : __('Anonymous', 'herbal-mix-creator2');
         }
-        
         return $nickname;
     }
 
     /**
      * Set product image from URL
-     *
-     * @param int $product_id Product ID
-     * @param string $image_url Image URL
-     * @return int|false Attachment ID or false on error
      */
     private function set_image_from_url($product_id, $image_url) {
         // Get image data
@@ -472,63 +611,9 @@ class HerbalMixActions {
         return $attachment_id;
     }
 
-    // This function remains but uses your new `create_public_product` implementation instead
-    private function generate_product_from_mix($mix, $is_virtual = true) {
-        if ($is_virtual) {
-            // For virtual products (adding to cart), we'll keep the original behavior
-            $template_id = 82;
-            $template_product = wc_get_product($template_id);
-            if (!$template_product) return false;
-
-            if (empty($mix->mix_data)) return false;
-            $mix_data = json_decode($mix->mix_data, true);
-            if (!is_array($mix_data)) return false;
-
-            $total_price = 0;
-            $total_points_price = 0;
-            $total_earned_points = 0;
-
-            global $wpdb;
-            $ingredients_table = $wpdb->prefix . 'herbal_ingredients';
-
-            foreach ($mix_data as $ingredient_id => $grams) {
-                $ingredient = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ingredients_table WHERE id = %d", intval($ingredient_id)));
-                if ($ingredient) {
-                    $total_price += floatval($ingredient->price) * $grams;
-                    $total_points_price += floatval($ingredient->price_points) * $grams;
-                    $total_earned_points += intval($ingredient->points_earned) * $grams;
-                }
-            }
-
-            $new_product = new WC_Product_Simple();
-            $new_product->set_name($mix->mix_name);
-            $new_product->set_description($mix->mix_description ?? 'Custom herbal mix created by user.');
-            $new_product->set_regular_price(round($total_price, 2));
-            $new_product->set_virtual(true); // Keep virtual for cart products
-            $new_product->set_catalog_visibility($is_virtual ? 'hidden' : 'visible');
-            $new_product->set_status($is_virtual ? 'private' : 'publish');
-            $new_product->save();
-
-            $product_id = $new_product->get_id();
-            update_post_meta($product_id, '_price_points', round($total_points_price, 2));
-            update_post_meta($product_id, '_points_earned', $total_earned_points);
-            update_post_meta($product_id, '_herbal_mix_id', $mix->id);
-            update_post_meta($product_id, '_custom_mix_user', $mix->user_id);
-
-            if (!empty($mix->mix_image)) {
-                $image_id = attachment_url_to_postid(esc_url($mix->mix_image));
-                if ($image_id) {
-                    set_post_thumbnail($product_id, $image_id);
-                }
-            }
-
-            return $product_id;
-        } else {
-            // For public products, use the new implementation
-            return $this->create_public_product($mix);
-        }
-    }
-
+    /**
+     * Display herbal mix details on product page
+     */
     public function display_herbal_mix_details() {
         global $product;
         
@@ -537,7 +622,7 @@ class HerbalMixActions {
         $product_id = $product->get_id();
         
         // Check if this is a mix
-        $herbal_mix_id = get_post_meta($product_id, '_herbal_mix_id', true);
+        $herbal_mix_id = get_post_meta($product_id, 'herbal_mix_id', true);
         if (!$herbal_mix_id) return;
         
         // Get author data
@@ -550,7 +635,7 @@ class HerbalMixActions {
         }
         
         // Get mix data
-        $mix_data_json = get_post_meta($product_id, '_custom_mix_data', true);
+        $mix_data_json = get_post_meta($product_id, 'herbal_mix_data', true);
         $mix_data = json_decode($mix_data_json, true);
         
         // Display author data
