@@ -74,58 +74,151 @@ class HerbalMixUserProfileExtended {
      * Enhanced enqueue assets with correct nonces
      */
     public function enqueue_profile_assets() {
-        if (is_account_page()) {
-            // CSS
-            wp_enqueue_style(
-                'herbal-profile-css',
-                plugin_dir_url(__FILE__) . '../assets/css/profile.css',
-                array('woocommerce-general'),
-                '1.0.3'
-            );
-            
-            // Add modal styles inline
-            wp_add_inline_style('herbal-profile-css', $this->get_modal_styles());
-            
-            // JavaScript
-            wp_enqueue_script(
-                'herbal-profile-js',
-                plugin_dir_url(__FILE__) . '../assets/js/profile.js',
-                array('jquery'),
-                '1.0.3',
-                true
-            );
-            
-            // Localize script with proper nonces
-            wp_localize_script('herbal-profile-js', 'herbalProfileData', array(
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'getNonce' => wp_create_nonce('get_mix_details'),
-                'publishNonce' => wp_create_nonce('publish_mix'),
-                'updateNonce' => wp_create_nonce('update_mix_details'),
-                'deleteNonce' => wp_create_nonce('delete_mix'),
-                'buyNonce' => wp_create_nonce('buy_mix'),
-                'favoritesNonce' => wp_create_nonce('manage_favorites'),
-                'uploadNonce' => wp_create_nonce('upload_mix_image'),
-                'cartUrl' => wc_get_cart_url(),
-                'strings' => array(
-                    'loading' => __('Loading...', 'herbal-mix-creator2'),
-                    'error' => __('An error occurred. Please try again.', 'herbal-mix-creator2'),
-                    'confirmDelete' => __('Are you sure you want to delete this mix?', 'herbal-mix-creator2'),
-                    'confirmPublish' => __('Are you sure you want to publish this mix?', 'herbal-mix-creator2'),
-                    'publishSuccess' => __('Mix published successfully!', 'herbal-mix-creator2'),
-                    'deleteSuccess' => __('Mix deleted successfully!', 'herbal-mix-creator2'),
-                    'updateSuccess' => __('Mix updated successfully!', 'herbal-mix-creator2'),
-                    'buySuccess' => __('Mix added to cart successfully!', 'herbal-mix-creator2'),
-                    'imageRequired' => __('Please upload an image for your mix.', 'herbal-mix-creator2'),
-                    'nameRequired' => __('Please enter a name for your mix.', 'herbal-mix-creator2'),
-                    'descriptionRequired' => __('Please enter a description for your mix.', 'herbal-mix-creator2'),
-                    'buying' => __('Adding to cart...', 'herbal-mix-creator2'),
-                    'deleting' => __('Deleting...', 'herbal-mix-creator2'),
-                    'publishing' => __('Publishing...', 'herbal-mix-creator2'),
-                    'updating' => __('Updating...', 'herbal-mix-creator2')
-                )
-            ));
-        }
+    // Only load on account pages
+    if (!is_account_page()) {
+        return;
     }
+    
+    // Enqueue profile CSS
+    wp_enqueue_style(
+        'herbal-profile-css',
+        plugin_dir_url(dirname(__FILE__)) . 'assets/css/profile.css',
+        array(),
+        filemtime(plugin_dir_path(dirname(__FILE__)) . 'assets/css/profile.css')
+    );
+    
+    // Enqueue profile JavaScript
+    wp_enqueue_script(
+        'herbal-profile-js',
+        plugin_dir_url(dirname(__FILE__)) . 'assets/js/profile.js',
+        array('jquery'),
+        filemtime(plugin_dir_path(dirname(__FILE__)) . 'assets/js/profile.js'),
+        true
+    );
+    
+    // FIXED: Comprehensive localization data
+    wp_localize_script('herbal-profile-js', 'herbalProfileData', array(
+        'ajaxUrl' => admin_url('admin-ajax.php'),
+        
+        // FIXED: All required nonces
+        'getNonce' => wp_create_nonce('get_mix_details'),
+        'recipeNonce' => wp_create_nonce('get_recipe_pricing'),
+        'updateMixNonce' => wp_create_nonce('update_mix_details'),
+        'publishNonce' => wp_create_nonce('publish_mix'),
+        'deleteNonce' => wp_create_nonce('delete_mix'),
+        'deleteMixNonce' => wp_create_nonce('delete_mix'), // Alternative name
+        'uploadImageNonce' => wp_create_nonce('upload_mix_image'),
+        'favoritesNonce' => wp_create_nonce('manage_favorites'),
+        'buyMixNonce' => wp_create_nonce('buy_mix'),
+        
+        // User data
+        'userId' => get_current_user_id(),
+        'currencySymbol' => get_woocommerce_currency_symbol(),
+        
+        // Strings for JavaScript
+        'strings' => array(
+            'loading' => __('Loading...', 'herbal-mix-creator2'),
+            'error' => __('An error occurred. Please try again.', 'herbal-mix-creator2'),
+            'success' => __('Success!', 'herbal-mix-creator2'),
+            'confirmDelete' => __('Are you sure you want to delete this mix? This action cannot be undone.', 'herbal-mix-creator2'),
+            'deleting' => __('Deleting...', 'herbal-mix-creator2'),
+            'deleteSuccess' => __('Mix deleted successfully.', 'herbal-mix-creator2'),
+            'updating' => __('Updating...', 'herbal-mix-creator2'),
+            'updateSuccess' => __('Mix updated successfully.', 'herbal-mix-creator2'),
+            'publishing' => __('Publishing...', 'herbal-mix-creator2'),
+            'publishSuccess' => __('Mix published successfully.', 'herbal-mix-creator2'),
+            'imageRequired' => __('Please select an image for your mix.', 'herbal-mix-creator2'),
+            'nameRequired' => __('Please enter a name for your mix.', 'herbal-mix-creator2'),
+            'descriptionRequired' => __('Please enter a description for your mix.', 'herbal-mix-creator2'),
+            'connectionError' => __('Connection error. Please check your internet connection and try again.', 'herbal-mix-creator2'),
+            'invalidResponse' => __('Invalid server response. Please try again.', 'herbal-mix-creator2'),
+            'noMixData' => __('No mix data found.', 'herbal-mix-creator2'),
+            'noIngredients' => __('No ingredients found in this mix.', 'herbal-mix-creator2')
+        )
+    ));
+    
+    // Add inline CSS for loading states
+    wp_add_inline_style('herbal-profile-css', '
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .ingredient-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .ingredient-item:last-child {
+            border-bottom: none;
+        }
+        
+        .ingredient-name {
+            font-weight: 500;
+        }
+        
+        .ingredient-weight {
+            color: #666;
+        }
+        
+        .no-ingredients {
+            text-align: center;
+            color: #999;
+            font-style: italic;
+            padding: 20px;
+        }
+        
+        .modal-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .close-modal {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+        
+        .close-modal:hover {
+            color: #333;
+        }
+    ');
+}
     
     /**
      * Get modal styles
@@ -804,117 +897,168 @@ class HerbalMixUserProfileExtended {
     }
     
     /**
-     * AJAX: Get mix details
-     */
-    public function ajax_get_mix_details() {
-        if (!wp_verify_nonce($_REQUEST['nonce'], 'get_mix_details')) {
-            wp_send_json_error(array('message' => 'Security check failed.'));
+ * AJAX: Get mix details (FIXED VERSION)
+ */
+public function ajax_get_mix_details() {
+    // Verify nonce - check multiple possible nonce names
+    $nonce_verified = false;
+    $nonces_to_check = ['get_mix_details', 'herbal_mix_nonce', 'getNonce'];
+    
+    foreach ($nonces_to_check as $nonce_name) {
+        if (isset($_REQUEST['nonce']) && wp_verify_nonce($_REQUEST['nonce'], $nonce_name)) {
+            $nonce_verified = true;
+            break;
         }
-        
-        $mix_id = intval($_REQUEST['mix_id']);
-        $user_id = get_current_user_id();
-        
-        if (!$user_id || !$mix_id) {
-            wp_send_json_error(array('message' => 'Invalid request.'));
-        }
-        
-        global $wpdb;
-        $table = $wpdb->prefix . 'herbal_mixes';
-        
-        $mix = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM $table WHERE id = %d",
-            $mix_id
-        ), ARRAY_A);
-        
-        if (!$mix) {
-            wp_send_json_error(array('message' => 'Mix not found.'));
-        }
-        
-        // Decode mix data
-        $mix['mix_data_decoded'] = json_decode($mix['mix_data'], true);
-        
-        wp_send_json_success($mix);
     }
     
-    /**
-     * AJAX: Get mix recipe and pricing
-     */
-    public function ajax_get_mix_recipe_and_pricing() {
-        if (!wp_verify_nonce($_REQUEST['nonce'], 'get_mix_details')) {
-            wp_send_json_error(array('message' => 'Security check failed.'));
+    if (!$nonce_verified) {
+        wp_send_json_error(array('message' => 'Security check failed.'));
+    }
+    
+    $mix_id = intval($_REQUEST['mix_id']);
+    $user_id = get_current_user_id();
+    
+    if (!$user_id || !$mix_id) {
+        wp_send_json_error(array('message' => 'Invalid request parameters.'));
+    }
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'herbal_mixes';
+    
+    // Get mix data with ownership check
+    $mix = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE id = %d AND user_id = %d",
+        $mix_id,
+        $user_id
+    ), ARRAY_A);
+    
+    if (!$mix) {
+        wp_send_json_error(array('message' => 'Mix not found or access denied.'));
+    }
+    
+    // Decode mix data safely
+    $mix_data = json_decode($mix['mix_data'], true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        wp_send_json_error(array('message' => 'Invalid mix data format.'));
+    }
+    
+    $mix['mix_data_decoded'] = $mix_data;
+    
+    wp_send_json_success($mix);
+}
+    
+   /**
+ * AJAX: Get mix recipe and pricing (FIXED VERSION)
+ */
+public function ajax_get_mix_recipe_and_pricing() {
+    // Verify nonce - check multiple possible nonce names
+    $nonce_verified = false;
+    $nonces_to_check = ['get_mix_details', 'get_recipe_pricing', 'herbal_mix_nonce'];
+    
+    foreach ($nonces_to_check as $nonce_name) {
+        if (isset($_REQUEST['nonce']) && wp_verify_nonce($_REQUEST['nonce'], $nonce_name)) {
+            $nonce_verified = true;
+            break;
         }
-        
-        $mix_id = intval($_REQUEST['mix_id']);
-        
-        if (!$mix_id) {
-            wp_send_json_error(array('message' => 'Invalid mix ID.'));
-        }
-        
-        global $wpdb;
-        $table = $wpdb->prefix . 'herbal_mixes';
-        
-        $mix = $wpdb->get_row($wpdb->prepare(
-            "SELECT mix_data FROM $table WHERE id = %d",
-            $mix_id
+    }
+    
+    if (!$nonce_verified) {
+        wp_send_json_error(array('message' => 'Security check failed.'));
+    }
+    
+    $mix_id = intval($_REQUEST['mix_id']);
+    
+    if (!$mix_id) {
+        wp_send_json_error(array('message' => 'Invalid mix ID.'));
+    }
+    
+    global $wpdb;
+    $table = $wpdb->prefix . 'herbal_mixes';
+    
+    $mix = $wpdb->get_row($wpdb->prepare(
+        "SELECT mix_data FROM $table WHERE id = %d",
+        $mix_id
+    ));
+    
+    if (!$mix) {
+        wp_send_json_error(array('message' => 'Mix not found.'));
+    }
+    
+    $mix_data = json_decode($mix->mix_data, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($mix_data)) {
+        wp_send_json_error(array('message' => 'Invalid mix data format.'));
+    }
+    
+    // Initialize totals
+    $total_price = 0;
+    $total_points = 0;
+    $points_earned = 0;
+    $ingredients_html = '';
+    
+    // Get packaging info (FIXED: use correct column names)
+    if (!empty($mix_data['packaging_id'])) {
+        $packaging = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}herbal_packaging WHERE id = %d",
+            intval($mix_data['packaging_id'])
         ));
         
-        if (!$mix) {
-            wp_send_json_error(array('message' => 'Mix not found.'));
+        if ($packaging) {
+            $total_price += floatval($packaging->price);
+            $total_points += floatval($packaging->price_point); // FIXED: correct column name
+            $points_earned += floatval($packaging->point_earned); // FIXED: correct column name
         }
+    }
+    
+    // Get ingredients info (FIXED: handle both old and new data structures)
+    if (!empty($mix_data['ingredients'])) {
+        // Handle different data structures
+        $ingredients_data = $mix_data['ingredients'];
         
-        $mix_data = json_decode($mix->mix_data, true);
-        if (!$mix_data) {
-            wp_send_json_error(array('message' => 'Invalid mix data.'));
-        }
-        
-        // Calculate totals
-        $total_price = 0;
-        $total_points = 0;
-        $points_earned = 0;
-        $ingredients_html = '';
-        
-        // Get packaging info
-        if (!empty($mix_data['packaging_id'])) {
-            $packaging = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}herbal_packaging WHERE id = %d",
-                $mix_data['packaging_id']
-            ));
-            
-            if ($packaging) {
-                $total_price += $packaging->price;
-                $total_points += $packaging->price_point;
-                $points_earned += $packaging->point_earned;
+        // If it's an object/associative array (old format): ingredient_id => weight
+        if (is_array($ingredients_data) && !isset($ingredients_data[0])) {
+            foreach ($ingredients_data as $ingredient_id => $weight) {
+                $this->process_ingredient_data($wpdb, $ingredient_id, $weight, $total_price, $total_points, $points_earned, $ingredients_html);
             }
         }
-        
-        // Get ingredients info
-        if (!empty($mix_data['ingredients'])) {
-            foreach ($mix_data['ingredients'] as $ingredient_id => $weight) {
-                $ingredient = $wpdb->get_row($wpdb->prepare(
-                    "SELECT * FROM {$wpdb->prefix}herbal_ingredients WHERE id = %d",
-                    $ingredient_id
-                ));
-                
-                if ($ingredient) {
-                    $total_price += ($ingredient->price * $weight);
-                    $total_points += ($ingredient->price_point * $weight);
-                    $points_earned += ($ingredient->point_earned * $weight);
-                    
-                    $ingredients_html .= '<div class="ingredient-item">';
-                    $ingredients_html .= '<span class="ingredient-name">' . esc_html($ingredient->name) . '</span>';
-                    $ingredients_html .= '<span class="ingredient-weight">' . $weight . 'g</span>';
-                    $ingredients_html .= '</div>';
+        // If it's an indexed array (new format): [{'id': x, 'weight': y}, ...]
+        elseif (is_array($ingredients_data) && isset($ingredients_data[0])) {
+            foreach ($ingredients_data as $ingredient_data) {
+                if (isset($ingredient_data['id']) && isset($ingredient_data['weight'])) {
+                    $this->process_ingredient_data($wpdb, $ingredient_data['id'], $ingredient_data['weight'], $total_price, $total_points, $points_earned, $ingredients_html);
                 }
             }
         }
-        
-        wp_send_json_success(array(
-            'ingredients_html' => $ingredients_html,
-            'total_price' => number_format($total_price, 2),
-            'total_points' => round($total_points),
-            'points_earned' => round($points_earned)
-        ));
     }
+    
+    wp_send_json_success(array(
+        'ingredients_html' => $ingredients_html,
+        'total_price' => number_format($total_price, 2),
+        'total_points' => round($total_points),
+        'points_earned' => round($points_earned)
+    ));
+}
+    
+    /**
+ * Helper method to process ingredient data (FIXED: use correct column names)
+ */
+private function process_ingredient_data($wpdb, $ingredient_id, $weight, &$total_price, &$total_points, &$points_earned, &$ingredients_html) {
+    $ingredient = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}herbal_ingredients WHERE id = %d",
+        intval($ingredient_id)
+    ));
+    
+    if ($ingredient) {
+        $weight = floatval($weight);
+        $total_price += (floatval($ingredient->price) * $weight);
+        $total_points += (floatval($ingredient->price_point) * $weight); // FIXED: correct column name
+        $points_earned += (floatval($ingredient->point_earned) * $weight); // FIXED: correct column name
+        
+        $ingredients_html .= '<div class="ingredient-item">';
+        $ingredients_html .= '<span class="ingredient-name">' . esc_html($ingredient->name) . '</span>';
+        $ingredients_html .= '<span class="ingredient-weight">' . $weight . 'g</span>';
+        $ingredients_html .= '</div>';
+    }
+}
     
     /**
      * AJAX: Update mix details
