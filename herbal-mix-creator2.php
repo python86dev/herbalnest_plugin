@@ -6,11 +6,12 @@
  * Author: Łukasz Łuczyński
  * Text Domain: herbal-mix-creator2
  * 
- * FIXED VERSION: Clean main plugin file with proper AJAX handler registration
+ * FIXED VERSION: Clean main plugin file without code duplication
  * - Removed duplicate AJAX actions
- * - Proper class initialization
+ * - Proper class initialization order
  * - Fixed asset loading
  * - English frontend for UK market
+ * - Centralized media handling
  */
 
 // Prevent direct file loading
@@ -23,9 +24,9 @@ define('HERBAL_MIX_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('HERBAL_MIX_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('HERBAL_MIX_VERSION', '1.0');
 
-// === LOAD CORE CLASSES ===
+// === LOAD CORE CLASSES IN PROPER ORDER ===
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-database.php';
-require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-media-handler.php';
+require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-media-handler.php'; // Load media handler first
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-product-meta.php';
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-reward-points.php';
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-actions.php';
@@ -42,7 +43,13 @@ function herbal_mix_creator_init() {
         return;
     }
     
-    // Initialize core classes
+    // Initialize core classes in proper order
+    // 1. Media handler (no dependencies)
+    if (class_exists('HerbalMixMediaHandler')) {
+        new HerbalMixMediaHandler();
+    }
+    
+    // 2. Core functionality
     if (class_exists('Herbal_Mix_Creator')) {
         new Herbal_Mix_Creator();
     }
@@ -59,16 +66,12 @@ function herbal_mix_creator_init() {
         new Herbal_Mix_Actions();
     }
     
-    if (class_exists('Herbal_Mix_Media_Handler')) {
-        new Herbal_Mix_Media_Handler();
-    }
-    
-    // Initialize admin panel
+    // 3. Admin panel (only in admin)
     if (is_admin() && class_exists('Herbal_Mix_Admin_Panel')) {
         new Herbal_Mix_Admin_Panel();
     }
     
-    // Load points system classes
+    // 4. Load points system and profile integration
     herbal_load_points_system();
 }
 
@@ -88,7 +91,8 @@ function herbal_load_points_system() {
         new Herbal_Points_Admin();
     }
     
-    // Load user profile extended - THIS IS IMPORTANT FOR EDIT/PUBLISH BUTTONS
+    // Load user profile extended - IMPORTANT FOR EDIT/PUBLISH BUTTONS
+    // This loads AFTER media handler to avoid duplicate AJAX registrations
     require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-user-profile-extended.php';
     if (class_exists('HerbalMixUserProfileExtended')) {
         new HerbalMixUserProfileExtended();
@@ -204,7 +208,20 @@ function render_herbal_mix_creator_shortcode($atts = []) {
     }
     
     // Include the frontend form
-    include HERBAL_MIX_PLUGIN_PATH . 'frontend-mix-form.php';
+    $template_path = HERBAL_MIX_PLUGIN_PATH . 'includes/templates/frontend-mix-form.php';
+    if (file_exists($template_path)) {
+        include $template_path;
+    } else {
+        // Try fallback location for backward compatibility
+        $fallback_path = HERBAL_MIX_PLUGIN_PATH . 'frontend-mix-form.php';
+        if (file_exists($fallback_path)) {
+            include $fallback_path;
+        } else {
+            echo '<div class="herbal-mix-error">';
+            echo '<p>' . esc_html__('Herbal Mix Creator template not found.', 'herbal-mix-creator2') . '</p>';
+            echo '</div>';
+        }
+    }
     
     return ob_get_clean();
 }
@@ -315,199 +332,99 @@ function enqueue_herbal_mix_assets() {
                 filemtime(HERBAL_MIX_PLUGIN_PATH . 'assets/js/admin-panel.js'),
                 true
             );
+            
+            // Localize admin script
+            wp_localize_script('herbal-admin-panel-js', 'herbalAdminData', [
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('herbal_admin_nonce'),
+                'strings' => [
+                    'confirmDelete' => __('Are you sure you want to delete this item?', 'herbal-mix-creator2'),
+                    'loading' => __('Loading...', 'herbal-mix-creator2'),
+                    'error' => __('An error occurred.', 'herbal-mix-creator2'),
+                    'success' => __('Success!', 'herbal-mix-creator2')
+                ]
+            ]);
         }
     }
 }
 
-// === BASIC AJAX HANDLERS (for frontend form only) ===
-// NOTE: Profile AJAX handlers are registered in HerbalMixUserProfileExtended class
+// === UTILITY FUNCTIONS ===
 
-add_action('wp_ajax_herbal_load_ingredients', 'herbal_ajax_load_ingredients');
-add_action('wp_ajax_nopriv_herbal_load_ingredients', 'herbal_ajax_load_ingredients');
-
-function herbal_ajax_load_ingredients() {
-    // Verify nonce
-    if (!wp_verify_nonce($_POST['nonce'], 'herbal_mix_nonce')) {
-        wp_die('Security check failed');
-    }
-    
-    global $wpdb;
-    $category_id = intval($_POST['category_id']);
-    $search = sanitize_text_field($_POST['search']);
-    
-    $ingredients_table = $wpdb->prefix . 'herbal_ingredients';
-    
-    $where_conditions = ['visible = 1'];
-    $values = [];
-    
-    if ($category_id > 0) {
-        $where_conditions[] = 'category_id = %d';
-        $values[] = $category_id;
-    }
-    
-    if (!empty($search)) {
-        $where_conditions[] = 'name LIKE %s';
-        $values[] = '%' . $wpdb->esc_like($search) . '%';
-    }
-    
-    $where_clause = implode(' AND ', $where_conditions);
-    
-    $query = "SELECT id, name, price, price_point, point_earned, image_url, description 
-              FROM $ingredients_table 
-              WHERE $where_clause 
-              ORDER BY sort_order ASC, name ASC 
-              LIMIT 50";
-    
-    if (!empty($values)) {
-        $query = $wpdb->prepare($query, $values);
-    }
-    
-    $ingredients = $wpdb->get_results($query);
-    
-    if ($wpdb->last_error) {
-        wp_send_json_error('Database error: ' . $wpdb->last_error);
-    }
-    
-    wp_send_json_success($ingredients);
+/**
+ * Get plugin version for cache busting
+ */
+function herbal_mix_get_version() {
+    return HERBAL_MIX_VERSION;
 }
 
-// === STYLES FOR POINTS DISPLAY ===
-add_action('wp_head', 'herbal_add_points_styles');
+/**
+ * Check if user has required capabilities for admin functions
+ */
+function herbal_mix_user_can_manage() {
+    return current_user_can('manage_options') || current_user_can('manage_woocommerce');
+}
 
-function herbal_add_points_styles() {
-    if (is_product() || is_cart() || is_checkout() || (function_exists('is_account_page') && is_account_page())) {
-        ?>
-        <style>
-        .herbal-product-points {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 15px;
-            margin: 15px 0;
-        }
-        
-        .herbal-product-points p {
-            margin: 5px 0;
-            font-size: 14px;
-        }
-        
-        .herbal-product-points .points-amount {
-            font-weight: bold;
-            color: #28a745;
-        }
-        
-        .points-price {
-            color: #6f42c1;
-        }
-        
-        .points-earned {
-            color: #28a745;
-        }
-        
-        .herbal-points-dashboard-widget {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .herbal-points-dashboard-widget h3 {
-            margin-top: 0;
-            color: #495057;
-        }
-        
-        .points-display {
-            margin: 15px 0;
-        }
-        
-        .points-value {
-            display: block;
-            font-size: 32px;
-            font-weight: bold;
-            color: #28a745;
-            line-height: 1;
-        }
-        
-        .points-label {
-            font-size: 14px;
-            color: #6c757d;
-            margin-top: 5px;
-            display: block;
-        }
-        
-        .herbal-login-notice {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 4px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .herbal-login-notice p {
-            margin: 0 0 15px 0;
-            color: #856404;
-        }
-        </style>
-        <?php
+/**
+ * Log plugin errors for debugging
+ */
+function herbal_mix_log_error($message, $context = array()) {
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Herbal Mix Creator: ' . $message . (!empty($context) ? ' Context: ' . print_r($context, true) : ''));
     }
+}
+
+/**
+ * Get plugin directory URL with trailing slash
+ */
+function herbal_mix_get_plugin_url() {
+    return HERBAL_MIX_PLUGIN_URL;
+}
+
+/**
+ * Get plugin directory path with trailing slash
+ */
+function herbal_mix_get_plugin_path() {
+    return HERBAL_MIX_PLUGIN_PATH;
 }
 
 // === CLEANUP ON UNINSTALL ===
-register_uninstall_hook(__FILE__, 'herbal_plugin_uninstall');
+register_uninstall_hook(__FILE__, 'herbal_mix_creator_uninstall');
 
-function herbal_plugin_uninstall() {
-    // Remove plugin options
-    delete_option('herbal_mix_creator_activated');
-    delete_option('herbal_flush_rewrite_rules_flag');
-    
-    // Note: We don't delete user data or database tables on uninstall
-    // This preserves user points and mixes in case of accidental uninstall
-    // Admin can manually delete tables if needed
-}
-
-// === DEBUG FUNCTIONS (for development) ===
-if (defined('WP_DEBUG') && WP_DEBUG) {
-    add_action('wp_footer', 'herbal_debug_info');
-    add_action('admin_footer', 'herbal_debug_info');
-}
-
-function herbal_debug_info() {
-    if (current_user_can('manage_options') && isset($_GET['herbal_debug'])) {
-        echo '<div style="position: fixed; bottom: 0; right: 0; background: #fff; border: 1px solid #ccc; padding: 10px; z-index: 9999; max-width: 300px; font-size: 12px;">';
-        echo '<h4>Herbal Mix Creator Debug Info</h4>';
-        echo '<p><strong>Plugin Version:</strong> ' . HERBAL_MIX_VERSION . '</p>';
-        echo '<p><strong>WooCommerce:</strong> ' . (class_exists('WooCommerce') ? 'Active' : 'Inactive') . '</p>';
-        echo '<p><strong>User Points:</strong> ' . (get_current_user_id() ? get_user_meta(get_current_user_id(), 'reward_points', true) : 'Not logged in') . '</p>';
-        echo '<p><strong>Database Ready:</strong> ' . (herbal_is_points_system_ready() ? 'Yes' : 'No') . '</p>';
-        echo '</div>';
+function herbal_mix_creator_uninstall() {
+    // Only run if user has permission
+    if (!current_user_can('activate_plugins')) {
+        return;
     }
-}
-
-// === AUTOMATIC CLEANUP TASK ===
-add_action('wp', 'herbal_schedule_cleanup');
-
-function herbal_schedule_cleanup() {
-    if (!wp_next_scheduled('herbal_cleanup_temp_data')) {
-        wp_schedule_event(time(), 'daily', 'herbal_cleanup_temp_data');
+    
+    // Check if we should keep data
+    $keep_data = get_option('herbal_mix_keep_data_on_uninstall', false);
+    
+    if (!$keep_data) {
+        global $wpdb;
+        
+        // Remove custom tables
+        $tables_to_remove = array(
+            $wpdb->prefix . 'herbal_packaging',
+            $wpdb->prefix . 'herbal_categories',
+            $wpdb->prefix . 'herbal_ingredients',
+            $wpdb->prefix . 'herbal_mixes',
+            $wpdb->prefix . 'herbal_points_history'
+        );
+        
+        foreach ($tables_to_remove as $table) {
+            $wpdb->query("DROP TABLE IF EXISTS {$table}");
+        }
+        
+        // Remove plugin options
+        delete_option('herbal_mix_creator_activated');
+        delete_option('herbal_flush_rewrite_rules_flag');
+        delete_option('herbal_mix_keep_data_on_uninstall');
+        
+        // Remove user meta data
+        delete_metadata('user', 0, 'herbal_points', '', true);
+        delete_metadata('user', 0, 'custom_avatar', '', true);
+        
+        // Clear any cached data
+        wp_cache_flush();
     }
-}
-
-add_action('herbal_cleanup_temp_data', 'herbal_cleanup_temp_data_callback');
-
-function herbal_cleanup_temp_data_callback() {
-    global $wpdb;
-    
-    // Clean up old temporary mix data (older than 30 days)
-    $wpdb->query($wpdb->prepare(
-        "DELETE FROM {$wpdb->prefix}herbal_mixes 
-         WHERE status = 'temporary' 
-         AND created_at < %s",
-        date('Y-m-d H:i:s', strtotime('-30 days'))
-    ));
-    
-    // Clean up orphaned images (if any tracking is implemented)
-    do_action('herbal_cleanup_orphaned_images');
 }
