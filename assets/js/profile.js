@@ -94,6 +94,226 @@ jQuery(document).ready(function($) {
             resetForms();
         }
     });
+    // === POPRAWKA NONCE ===
+    // Użyj tego samego nonce co w głównym mix-creator
+    const fixedNonce = $('#herbal-mix-nonce').val() || 
+                      (typeof herbalMixData !== 'undefined' ? herbalMixData.nonce : 'fallback');
+    
+    console.log('Using nonce:', fixedNonce);
+    
+    // === POPRAWKA EDIT MODAL ===
+    $(document).off('click', '.edit-mix').on('click', '.edit-mix', function(e) {
+        e.preventDefault();
+        
+        const mixId = $(this).data('mix-id');
+        console.log('Edit mix clicked, ID:', mixId);
+        
+        if (!mixId) {
+            alert('Invalid mix ID');
+            return;
+        }
+        
+        const $button = $(this);
+        const originalText = $button.text();
+        $button.text('Loading...').prop('disabled', true);
+        
+        // KROK 1: Pobierz podstawowe dane mieszanki
+        $.ajax({
+            url: window.ajaxurl || '/wp-admin/admin-ajax.php',
+            type: 'POST',
+            data: {
+                action: 'get_mix_details',
+                nonce: fixedNonce,
+                mix_id: mixId
+            },
+            success: function(response) {
+                console.log('Mix details response:', response);
+                
+                if (response.success && response.data) {
+                    // Wypełnij podstawowe pola
+                    $('#edit-mix-id').val(response.data.id);
+                    $('#edit-mix-name').val(response.data.name);
+                    $('#edit-mix-description').val(response.data.description || '');
+                    
+                    // Obsłuż obrazek
+                    if (response.data.image) {
+                        $('#edit-mix-image').val(response.data.image);
+                        $('#edit-mix-image-preview').attr('src', response.data.image).show();
+                        $('#edit-mix-image-remove').show();
+                    }
+                    
+                    // Pokaż modal
+                    $('#edit-mix-modal').show();
+                    
+                    // KROK 2: Pobierz dane receptury - POPRAWKA!
+                    loadRecipeData(mixId);
+                    
+                } else {
+                    alert('Error: ' + (response.data || 'Failed to load mix details'));
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Edit mix error:', error, xhr.responseText);
+                alert('Connection error. Please try again.');
+            },
+            complete: function() {
+                $button.text(originalText).prop('disabled', false);
+            }
+        });
+    });
+    
+    // === NOWA FUNKCJA: Ładowanie danych receptury ===
+    function loadRecipeData(mixId) {
+        console.log('Loading recipe data for mix:', mixId);
+        
+        // Wyświetl loading state
+        $('#edit-mix-ingredients-preview').html('<p style="text-align: center; color: #666; padding: 20px;">Loading recipe data...</p>');
+        
+        $.ajax({
+            url: window.ajaxurl || '/wp-admin/admin-ajax.php',
+            type: 'POST',
+            data: {
+                action: 'get_mix_recipe_and_pricing',
+                nonce: fixedNonce,
+                mix_id: mixId,
+                action_type: 'edit'
+            },
+            success: function(response) {
+                console.log('Recipe data response:', response);
+                
+                if (response.success && response.data && response.data.recipe) {
+                    const recipe = response.data.recipe;
+                    
+                    // POPRAWKA: Wypełnij sekcję receptury
+                    displayRecipePreview(recipe);
+                    
+                    // POPRAWKA: Aktualizuj ceny
+                    updatePricing(recipe);
+                    
+                } else {
+                    console.error('Failed to load recipe data:', response);
+                    $('#edit-mix-ingredients-preview').html('<p style="color: #999;">Recipe data not available</p>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Recipe data error:', error, xhr.responseText);
+                $('#edit-mix-ingredients-preview').html('<p style="color: #ff0000;">Error loading recipe data</p>');
+            }
+        });
+    }
+    
+    // === FUNKCJA: Wyświetl podgląd receptury ===
+    function displayRecipePreview(recipe) {
+        let html = '';
+        
+        // Informacje o opakowaniu
+        if (recipe.packaging && recipe.packaging.name) {
+            html += `
+                <div style="background: #f0f8f4; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #2a6a3c;">
+                    <h5 style="margin: 0 0 8px 0; color: #2a6a3c; font-size: 14px;">Packaging</h5>
+                    <p style="margin: 0; font-size: 14px;">
+                        <strong>${escapeHtml(recipe.packaging.name)}</strong> (${recipe.packaging.capacity}g capacity)<br>
+                        Price: £${recipe.packaging.price.toFixed(2)}
+                    </p>
+                </div>
+            `;
+        }
+        
+        // Lista składników
+        if (recipe.ingredients && recipe.ingredients.length > 0) {
+            html += '<h5 style="margin: 15px 0 10px 0; color: #2a6a3c; font-size: 14px;">Ingredients</h5>';
+            html += '<div style="border: 1px solid #eee; border-radius: 6px; overflow: hidden;">';
+            
+            recipe.ingredients.forEach(function(ingredient, index) {
+                const bgColor = index % 2 === 0 ? '#fff' : '#f9f9f9';
+                html += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${bgColor}; border-bottom: 1px solid #eee;">
+                        <span style="font-weight: 500; color: #333;">${escapeHtml(ingredient.name)}</span>
+                        <span style="color: #666; margin: 0 15px;">${ingredient.weight}g</span>
+                        <span style="font-weight: bold; color: #2a6a3c;">£${ingredient.total_price.toFixed(2)}</span>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+        }
+        
+        // Podsumowanie
+        if (recipe.total_weight !== undefined && recipe.total_price !== undefined) {
+            html += `
+                <div style="margin-top: 15px; padding-top: 12px; border-top: 2px solid #2a6a3c;">
+                    <p style="margin: 5px 0; font-weight: 500; font-size: 14px;">
+                        <strong>Total Weight:</strong> ${recipe.total_weight}g
+                    </p>
+                </div>
+            `;
+        }
+        
+        if (!html) {
+            html = '<p style="color: #999; text-align: center; padding: 20px;">No recipe data available</p>';
+        }
+        
+        $('#edit-mix-ingredients-preview').html(html);
+    }
+    
+    // === FUNKCJA: Aktualizuj ceny ===
+    function updatePricing(recipe) {
+        const currencySymbol = '£'; // UK market
+        
+        if (recipe.total_price !== undefined) {
+            $('#edit-mix-price').text(`${currencySymbol}${recipe.total_price.toFixed(2)}`);
+        }
+        
+        if (recipe.total_points !== undefined) {
+            $('#edit-mix-points-price').text(`${Math.round(recipe.total_points)} pts`);
+            // Zakładając 10% punktów earned
+            $('#edit-mix-points-earned').text(`${Math.round(recipe.total_points * 0.1)} pts`);
+        }
+    }
+    
+    // === POPRAWKA CLOSE BUTTON ===
+    $(document).off('click', '.close-modal, .cancel-modal, .edit-close').on('click', '.close-modal, .cancel-modal, .edit-close', function(e) {
+        e.preventDefault();
+        console.log('Modal close clicked');
+        
+        // Znajdź modal i zamknij
+        const $modal = $(this).closest('.modal-dialog');
+        if ($modal.length) {
+            $modal.hide();
+        } else {
+            // Fallback - zamknij wszystkie modale
+            $('.modal-dialog').hide();
+        }
+        
+        // Resetuj formularze
+        $('#edit-mix-form')[0]?.reset();
+        $('#edit-mix-ingredients-preview').empty();
+        $('#edit-mix-image-preview').hide();
+        $('#edit-mix-image-remove').hide();
+    });
+    
+    // === UTILITY FUNCTION ===
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    console.log('Edit modal fix applied successfully');
+});
+
+// === DODAJ NONCE DO STRONY JEŚLI BRAKUJE ===
+if (!document.getElementById('herbal-mix-nonce')) {
+    jQuery(function($) {
+        // Spróbuj użyć istniejącego nonce z herbalMixData
+        const nonce = (typeof herbalMixData !== 'undefined' && herbalMixData.nonce) ? 
+                     herbalMixData.nonce : 'fallback_nonce';
+        
+        $('body').append('<input type="hidden" id="herbal-mix-nonce" value="' + nonce + '">');
+        console.log('Added herbal-mix-nonce to page:', nonce);
+    });
+}
     
     // === EDIT MIX FUNCTIONALITY ===
     $(document).on('click', '.edit-mix', function(e) {

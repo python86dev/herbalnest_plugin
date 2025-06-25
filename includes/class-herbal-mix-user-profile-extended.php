@@ -1111,33 +1111,122 @@ class HerbalMixUserProfileExtended {
     }
 
     // === HELPER METHODS ===
+/**
+    * Verify AJAX nonce - POPRAWIONA WERSJA
+ * Używa tego samego nonce co mix-creator dla zgodności
+ */
+private function verify_nonce($action = '') {
+    // POPRAWKA: Użyj głównego nonce z mix-creator zamiast indywidualnych
+    $nonce_action = 'herbal_mix_nonce';
+    
+    // Sprawdź najpierw główny nonce
+    if (isset($_POST['nonce']) && wp_verify_nonce($_POST['nonce'], $nonce_action)) {
+        // OK - nonce poprawny
+    } 
+    // Fallback dla starych requestów
+    elseif (isset($_REQUEST['nonce']) && wp_verify_nonce($_REQUEST['nonce'], $nonce_action)) {
+        // OK - nonce poprawny
+    }
+    // Sprawdź czy to request z mix-creator
+    elseif (isset($_POST['nonce']) && wp_verify_nonce($_POST['nonce'], 'herbal_mix_nonce')) {
+        // OK - nonce z mix-creator
+    }
+    else {
+        // Log dla debugowania
+        error_log('HERBAL MIX: Nonce verification failed. Action: ' . $action . ', POST data: ' . print_r($_POST, true));
+        wp_send_json_error('Security check failed.');
+    }
+    
+    if (!is_user_logged_in()) {
+        wp_send_json_error('You must be logged in.');
+    }
+}
 
-    /**
-     * Verify AJAX nonce
-     */
-    private function verify_nonce($action) {
-        // Map actions to their nonce names
-        $nonce_mapping = array(
-            'get_mix_details' => 'get_mix_details',
-            'get_recipe_pricing' => 'get_recipe_pricing',
-            'update_mix_details' => 'update_mix_details',
-            'publish_mix' => 'publish_mix',
-            'delete_mix' => 'delete_mix',
-            'manage_favorites' => 'manage_favorites',
-            'buy_mix' => 'buy_mix',
-            'herbal_profile_nonce' => 'herbal_profile_nonce'
-        );
+/**
+ * POPRAWKA: Build recipe details - fix dla brakujących danych
+ */
+private function build_recipe_details($mix_data) {
+    if (empty($mix_data['ingredients'])) {
+        return null;
+    }
+    
+    global $wpdb;
+    
+    $details = array(
+        'packaging' => array(),
+        'ingredients' => array(),
+        'total_weight' => 0,
+        'total_price' => 0,
+        'total_points' => 0
+    );
+    
+    // POPRAWKA: Packaging details - sprawdź różne struktury danych
+    $packaging_id = null;
+    if (isset($mix_data['packaging']['id'])) {
+        $packaging_id = intval($mix_data['packaging']['id']);
+    } elseif (isset($mix_data['packaging_id'])) {
+        $packaging_id = intval($mix_data['packaging_id']);
+    }
+    
+    if ($packaging_id > 0) {
+        $packaging = $wpdb->get_row($wpdb->prepare("
+            SELECT * FROM {$wpdb->prefix}herbal_packaging 
+            WHERE id = %d
+        ", $packaging_id));
         
-        $nonce_action = isset($nonce_mapping[$action]) ? $nonce_mapping[$action] : $action;
-        
-        if (!check_ajax_referer($nonce_action, 'nonce', false)) {
-            wp_send_json_error('Security check failed.');
-        }
-        
-        if (!is_user_logged_in()) {
-            wp_send_json_error('You must be logged in.');
+        if ($packaging) {
+            $details['packaging'] = array(
+                'id' => $packaging->id,
+                'name' => $packaging->name,
+                'capacity' => $packaging->herb_capacity,
+                'price' => (float) $packaging->price,
+                'points' => (float) $packaging->price_point
+            );
+            $details['total_price'] += (float) $packaging->price;
+            $details['total_points'] += (float) $packaging->price_point;
         }
     }
+    
+    // POPRAWKA: Ingredients details - sprawdź strukturę ingredients
+    if (is_array($mix_data['ingredients'])) {
+        foreach ($mix_data['ingredients'] as $ingredient) {
+            $ingredient_id = isset($ingredient['id']) ? intval($ingredient['id']) : 0;
+            $weight = isset($ingredient['weight']) ? (float) $ingredient['weight'] : 0;
+            
+            if ($ingredient_id > 0 && $weight > 0) {
+                $ing_data = $wpdb->get_row($wpdb->prepare("
+                    SELECT * FROM {$wpdb->prefix}herbal_ingredients 
+                    WHERE id = %d
+                ", $ingredient_id));
+                
+                if ($ing_data) {
+                    $price_per_gram = (float) $ing_data->price;
+                    $points_per_gram = (float) $ing_data->price_point;
+                    
+                    $ingredient_total_price = $weight * $price_per_gram;
+                    $ingredient_total_points = $weight * $points_per_gram;
+                    
+                    $details['ingredients'][] = array(
+                        'id' => $ing_data->id,
+                        'name' => $ing_data->name,
+                        'weight' => $weight,
+                        'price_per_gram' => $price_per_gram,
+                        'total_price' => $ingredient_total_price,
+                        'points_per_gram' => $points_per_gram,
+                        'total_points' => $ingredient_total_points,
+                        'image' => $ing_data->image_url
+                    );
+                    
+                    $details['total_weight'] += $weight;
+                    $details['total_price'] += $ingredient_total_price;
+                    $details['total_points'] += $ingredient_total_points;
+                }
+            }
+        }
+    }
+    
+    return $details;
+}
 
     /**
      * Build recipe details from mix data
@@ -1211,6 +1300,27 @@ class HerbalMixUserProfileExtended {
         $recipe_details = $this->build_recipe_details($mix_data);
         return $recipe_details ? $recipe_details['total_price'] : 0;
     }
+    /**
+ * DODAJ tę funkcję na końcu klasy (przed zamykającym nawiasem):
+ * Debug function do sprawdzania nonce
+ */
+public function debug_nonce_check() {
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    
+    echo '<div style="background: #fff; border: 1px solid #ccc; padding: 15px; margin: 15px 0;">';
+    echo '<h4>Herbal Mix Nonce Debug</h4>';
+    echo '<p><strong>Current nonce:</strong> ' . wp_create_nonce('herbal_mix_nonce') . '</p>';
+    echo '<p><strong>User logged in:</strong> ' . (is_user_logged_in() ? 'Yes' : 'No') . '</p>';
+    echo '<p><strong>User ID:</strong> ' . get_current_user_id() . '</p>';
+    
+    if (isset($_POST['nonce'])) {
+        echo '<p><strong>Posted nonce:</strong> ' . esc_html($_POST['nonce']) . '</p>';
+        echo '<p><strong>Nonce valid:</strong> ' . (wp_verify_nonce($_POST['nonce'], 'herbal_mix_nonce') ? 'Yes' : 'No') . '</p>';
+    }
+    echo '</div>';
+}
 }
 
 // Initialize the class
