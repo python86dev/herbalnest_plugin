@@ -76,26 +76,46 @@ class Herbal_Mix_Database {
             ) {$charset_collate};
         ");
 
-        // Table: herbal_mixes (ORIGINAL - do not change!)
-        $table4 = $wpdb->prefix . 'herbal_mixes';
-        dbDelta("
-            CREATE TABLE {$table4} (
-                id INT NOT NULL AUTO_INCREMENT,
-                user_id BIGINT UNSIGNED NOT NULL,
-                mix_name VARCHAR(255) NOT NULL,
-                mix_description TEXT,
-                mix_image TEXT,
-                mix_data LONGTEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                status VARCHAR(50) DEFAULT 'favorite',
-                liked_by TEXT,
-                like_count INT DEFAULT 1,
-                base_product_id BIGINT DEFAULT NULL,
-                PRIMARY KEY (id),
-                KEY user_id (user_id),
-                KEY status (status)
-            ) {$charset_collate};
-        ");
+        // Table: herbal_mixes (UPDATED - added mix_story field)
+$table4 = $wpdb->prefix . 'herbal_mixes';
+dbDelta("
+    CREATE TABLE {$table4} (
+        id INT NOT NULL AUTO_INCREMENT,
+        user_id BIGINT UNSIGNED NOT NULL,
+        mix_name VARCHAR(255) NOT NULL,
+        mix_description TEXT,
+        mix_story TEXT,
+        mix_image TEXT,
+        mix_data LONGTEXT NOT NULL COMMENT 'JSON cache of ingredients and packaging data - auto-generated from herbal_mix_ingredients table',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'favorite',
+        liked_by TEXT,
+        like_count INT DEFAULT 1,
+        base_product_id BIGINT DEFAULT NULL,
+        PRIMARY KEY (id),
+        KEY user_id (user_id),
+        KEY status (status)
+    ) {$charset_collate};
+");
+        
+        // Table: herbal_mix_ingredients (NEW - relational ingredients table)
+$table_mix_ingredients = $wpdb->prefix . 'herbal_mix_ingredients';
+dbDelta("
+    CREATE TABLE {$table_mix_ingredients} (
+        id INT NOT NULL AUTO_INCREMENT,
+        mix_id INT NOT NULL,
+        ingredient_id INT NOT NULL,
+        weight_grams FLOAT NOT NULL DEFAULT 0,
+        sort_order INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY unique_mix_ingredient (mix_id, ingredient_id),
+        KEY mix_id (mix_id),
+        KEY ingredient_id (ingredient_id),
+        KEY sort_order (sort_order)
+    ) {$charset_collate};
+");
+        
         
         // === EXTENDED TABLES (ADDED FROM HerbalPointsManager) ===
         
@@ -465,36 +485,92 @@ class Herbal_Mix_Database {
     }
 
     /**
-     * Save new mix (ORIGINAL METHOD)
-     */
-    public static function save_mix($user_id, $mix_name, $mix_data, $mix_description = '', $status = 'favorite') {
-        global $wpdb;
+ * Save new mix (UPDATED - added mix_story parameter)
+ */
+public static function save_mix($user_id, $mix_name, $mix_data, $mix_description = '', $mix_story = '', $status = 'favorite') {
+    global $wpdb;
 
-        if (!$user_id || !$mix_name || !$mix_data) {
-            return new WP_Error('missing_data', 'Missing required data');
-        }
-
-        $table = $wpdb->prefix . 'herbal_mixes';
-        
-        $result = $wpdb->insert(
-            $table,
-            array(
-                'user_id' => $user_id,
-                'mix_name' => sanitize_text_field($mix_name),
-                'mix_description' => sanitize_textarea_field($mix_description),
-                'mix_data' => wp_json_encode($mix_data),
-                'status' => sanitize_text_field($status),
-                'created_at' => current_time('mysql')
-            ),
-            array('%d', '%s', '%s', '%s', '%s', '%s')
-        );
-
-        if ($result === false) {
-            return new WP_Error('save_failed', 'Failed to save mix: ' . $wpdb->last_error);
-        }
-
-        return $wpdb->insert_id;
+    if (!$user_id || !$mix_name || !$mix_data) {
+        return new WP_Error('missing_data', 'Missing required data');
     }
+
+    $table = $wpdb->prefix . 'herbal_mixes';
+    
+    $result = $wpdb->insert(
+        $table,
+        array(
+            'user_id' => $user_id,
+            'mix_name' => sanitize_text_field($mix_name),
+            'mix_description' => sanitize_textarea_field($mix_description),
+            'mix_story' => sanitize_textarea_field($mix_story),
+            'mix_data' => wp_json_encode($mix_data),
+            'status' => sanitize_text_field($status),
+            'created_at' => current_time('mysql')
+        ),
+        array('%d', '%s', '%s', '%s', '%s', '%s', '%s')
+    );
+
+    if ($result === false) {
+        return new WP_Error('save_failed', 'Failed to save mix: ' . $wpdb->last_error);
+    }
+
+    return $wpdb->insert_id;
+}
+
+/**
+ * Update mix story by mix ID
+ * NEW FUNCTION for updating story
+ */
+public static function update_mix_story($mix_id, $mix_story) {
+    global $wpdb;
+    
+    if (!$mix_id) {
+        return new WP_Error('missing_id', 'Missing mix ID');
+    }
+    
+    $table = $wpdb->prefix . 'herbal_mixes';
+    
+    $result = $wpdb->update(
+        $table,
+        array('mix_story' => sanitize_textarea_field($mix_story)),
+        array('id' => intval($mix_id)),
+        array('%s'),
+        array('%d')
+    );
+    
+    if ($result === false) {
+        return new WP_Error('update_failed', 'Failed to update mix story: ' . $wpdb->last_error);
+    }
+    
+    return $result;
+}
+
+/**
+ * Get mix by ID including story
+ * NEW FUNCTION for getting mix with story
+ */
+public static function get_mix_with_story($mix_id) {
+    global $wpdb;
+    
+    if (!$mix_id) {
+        return new WP_Error('missing_id', 'Missing mix ID');
+    }
+    
+    $table = $wpdb->prefix . 'herbal_mixes';
+    
+    $mix = $wpdb->get_row(
+        $wpdb->prepare(
+            "SELECT * FROM {$table} WHERE id = %d",
+            intval($mix_id)
+        )
+    );
+    
+    if (!$mix) {
+        return new WP_Error('not_found', 'Mix not found');
+    }
+    
+    return $mix;
+}
 
     /**
      * Get user mixes (ORIGINAL METHOD)
@@ -1281,4 +1357,213 @@ class Herbal_Mix_Database {
             return new WP_Error('restore_failed', 'Failed to restore data: ' . $e->getMessage());
         }
     }
+    /**
+ * Add ingredient to mix
+ * NEW METHOD for relational ingredients
+ */
+public static function add_mix_ingredient($mix_id, $ingredient_id, $weight_grams, $sort_order = 0) {
+    global $wpdb;
+    
+    if (!$mix_id || !$ingredient_id || !$weight_grams) {
+        return new WP_Error('missing_data', 'Missing required data for mix ingredient');
+    }
+    
+    $table = $wpdb->prefix . 'herbal_mix_ingredients';
+    
+    // Check if ingredient already exists in this mix
+    $existing = $wpdb->get_var($wpdb->prepare(
+        "SELECT id FROM {$table} WHERE mix_id = %d AND ingredient_id = %d",
+        $mix_id, $ingredient_id
+    ));
+    
+    if ($existing) {
+        // Update existing
+        $result = $wpdb->update(
+            $table,
+            array(
+                'weight_grams' => floatval($weight_grams),
+                'sort_order' => intval($sort_order)
+            ),
+            array('id' => $existing),
+            array('%f', '%d'),
+            array('%d')
+        );
+    } else {
+        // Insert new
+        $result = $wpdb->insert(
+            $table,
+            array(
+                'mix_id' => intval($mix_id),
+                'ingredient_id' => intval($ingredient_id),
+                'weight_grams' => floatval($weight_grams),
+                'sort_order' => intval($sort_order)
+            ),
+            array('%d', '%d', '%f', '%d')
+        );
+    }
+    
+    if ($result !== false) {
+        // Regenerate cache
+        self::regenerate_mix_cache($mix_id);
+        return $existing ? $existing : $wpdb->insert_id;
+    }
+    
+    return new WP_Error('save_failed', 'Failed to save mix ingredient: ' . $wpdb->last_error);
 }
+
+/**
+ * Remove ingredient from mix
+ * NEW METHOD
+ */
+public static function remove_mix_ingredient($mix_id, $ingredient_id) {
+    global $wpdb;
+    
+    $table = $wpdb->prefix . 'herbal_mix_ingredients';
+    
+    $result = $wpdb->delete(
+        $table,
+        array(
+            'mix_id' => intval($mix_id),
+            'ingredient_id' => intval($ingredient_id)
+        ),
+        array('%d', '%d')
+    );
+    
+    if ($result !== false) {
+        // Regenerate cache
+        self::regenerate_mix_cache($mix_id);
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Get all ingredients for a mix
+ * NEW METHOD
+ */
+public static function get_mix_ingredients($mix_id) {
+    global $wpdb;
+    
+    if (!$mix_id) {
+        return array();
+    }
+    
+    $mix_table = $wpdb->prefix . 'herbal_mix_ingredients';
+    $ingredients_table = $wpdb->prefix . 'herbal_ingredients';
+    
+    return $wpdb->get_results($wpdb->prepare("
+        SELECT mi.*, i.name, i.price, i.price_point, i.point_earned, i.image_url, i.description
+        FROM {$mix_table} mi
+        JOIN {$ingredients_table} i ON mi.ingredient_id = i.id
+        WHERE mi.mix_id = %d AND i.visible = 1
+        ORDER BY mi.sort_order, mi.id
+    ", $mix_id));
+}
+
+/**
+ * Regenerate mix_data cache from relational data
+ * NEW METHOD - automatically updates JSON cache
+ */
+public static function regenerate_mix_cache($mix_id) {
+    global $wpdb;
+    
+    if (!$mix_id) {
+        return false;
+    }
+    
+    // Get mix ingredients
+    $ingredients = self::get_mix_ingredients($mix_id);
+    
+    // Get packaging info if available
+    $mix = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}herbal_mixes WHERE id = %d",
+        $mix_id
+    ));
+    
+    if (!$mix) {
+        return false;
+    }
+    
+    // Build cache data
+    $cache_data = array(
+        'mix_id' => intval($mix_id),
+        'mix_name' => $mix->mix_name,
+        'mix_description' => $mix->mix_description,
+        'mix_story' => $mix->mix_story,
+        'user_id' => intval($mix->user_id),
+        'ingredients' => array(),
+        'totals' => array(
+            'weight' => 0,
+            'price' => 0,
+            'price_point' => 0,
+            'point_earned' => 0
+        ),
+        'cache_generated' => current_time('mysql')
+    );
+    
+    // Add ingredients to cache
+    foreach ($ingredients as $ingredient) {
+        $weight = floatval($ingredient->weight_grams);
+        $price_total = floatval($ingredient->price) * $weight;
+        $points_total = floatval($ingredient->price_point) * $weight;
+        $earned_total = floatval($ingredient->point_earned) * $weight;
+        
+        $cache_data['ingredients'][] = array(
+            'id' => intval($ingredient->ingredient_id),
+            'name' => $ingredient->name,
+            'weight' => $weight,
+            'price_per_gram' => floatval($ingredient->price),
+            'price_point_per_gram' => floatval($ingredient->price_point),
+            'point_earned_per_gram' => floatval($ingredient->point_earned),
+            'total_price' => $price_total,
+            'total_points' => $points_total,
+            'total_earned' => $earned_total,
+            'image_url' => $ingredient->image_url,
+            'description' => $ingredient->description
+        );
+        
+        // Add to totals
+        $cache_data['totals']['weight'] += $weight;
+        $cache_data['totals']['price'] += $price_total;
+        $cache_data['totals']['price_point'] += $points_total;
+        $cache_data['totals']['point_earned'] += $earned_total;
+    }
+    
+    // Update cache in database
+    $result = $wpdb->update(
+        $wpdb->prefix . 'herbal_mixes',
+        array('mix_data' => wp_json_encode($cache_data)),
+        array('id' => intval($mix_id)),
+        array('%s'),
+        array('%d')
+    );
+    
+    return $result !== false;
+}
+
+/**
+ * Clear all ingredients from mix
+ * NEW METHOD
+ */
+public static function clear_mix_ingredients($mix_id) {
+    global $wpdb;
+    
+    $table = $wpdb->prefix . 'herbal_mix_ingredients';
+    
+    $result = $wpdb->delete(
+        $table,
+        array('mix_id' => intval($mix_id)),
+        array('%d')
+    );
+    
+    if ($result !== false) {
+        // Regenerate cache (will be empty)
+        self::regenerate_mix_cache($mix_id);
+        return true;
+    }
+    
+    return false;
+}
+}
+
