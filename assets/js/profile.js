@@ -1,371 +1,71 @@
 /**
- * Enhanced Profile.js - COMPLETE integration with HerbalMixMediaHandler
- * File: assets/js/profile.js
+ * KOMPLETNY: Profile JavaScript with Publish Modal
+ * Plik: assets/js/profile.js
  * 
- * COMPLETE FUNCTIONALITY:
- * - Full integration with HerbalMixMediaHandler for image uploads
- * - Edit/Publish/View/Delete mix functionality
- * - Form validation with visual feedback
- * - Modal management and accessibility
- * - Error handling and user notifications
- * - Debug mode and helper functions
+ * PEŁNA WERSJA z:
+ * - Edit Mix functionality
+ * - Publish Mix Modal (nowy)
+ * - Delete, View, Buy, Remove Favorite
+ * - Image upload handling
+ * - Error handling i notifications
+ * - Modal management
  */
+
 jQuery(document).ready(function($) {
     'use strict';
     
-    console.log('Profile.js loaded - Enhanced version with full functionality');
+    console.log('Herbal Mix Profile JS loaded - COMPLETE VERSION WITH PUBLISH MODAL');
     
-    // === CONFIGURATION CHECK ===
+    // Ensure we have the necessary data
     if (typeof herbalProfileData === 'undefined') {
-        console.error('herbalProfileData not defined - creating fallback configuration');
-        window.herbalProfileData = {
-            ajaxUrl: ajaxurl || '/wp-admin/admin-ajax.php',
-            getNonce: 'fallback_nonce',
-            recipeNonce: 'fallback_nonce',
-            updateMixNonce: 'fallback_nonce',
-            publishNonce: 'fallback_nonce',
-            deleteNonce: 'fallback_nonce',
-            deleteMixNonce: 'fallback_nonce',
-            uploadImageNonce: 'fallback_nonce',
-            favoritesNonce: 'fallback_nonce',
-            buyMixNonce: 'fallback_nonce',
-            userId: 0,
-            currencySymbol: '£',
-            strings: {
-                loading: 'Loading...',
-                error: 'An error occurred. Please try again.',
-                success: 'Success!',
-                confirmDelete: 'Are you sure you want to delete this mix? This action cannot be undone.',
-                confirmRemoveFavorite: 'Remove this mix from favorites?',
-                deleting: 'Deleting...',
-                deleteSuccess: 'Mix deleted successfully.',
-                connectionError: 'Connection error. Please try again.',
-                updateSuccess: 'Mix updated successfully!',
-                publishSuccess: 'Mix published successfully!',
-                invalidData: 'Invalid mix data.',
-                accessDenied: 'Access denied.',
-                imageRequired: 'Please select an image for your mix.'
-            }
-        };
+        console.error('herbalProfileData not found');
+        return;
     }
     
-    console.log('Profile configuration loaded:', herbalProfileData);
-    
-    // === GLOBAL VARIABLES ===
-    let isFormSubmitting = false;
-    let currentMixData = null;
-    
-    // === TAB NAVIGATION ===
-    $('.tab-navigation a').on('click', function(e) {
-        e.preventDefault();
-        
-        const target = $(this).attr('href');
-        
-        $('.tab-navigation li').removeClass('active');
-        $(this).parent().addClass('active');
-        
-        $('.tab-pane').removeClass('active');
-        $(target).addClass('active');
-        
-        console.log('Tab switched to:', target);
-    });
-    
-    // === MODAL MANAGEMENT ===
-    
-    // Close modal handlers
-    $(document).on('click', '.modal-close, .cancel-modal', function(e) {
-        e.preventDefault();
-        $(this).closest('.modal-dialog').hide();
-        resetForms();
-    });
-    
-    // Close modal on background click
-    $(document).on('click', '.modal-dialog', function(e) {
-        if (e.target === this) {
-            $(this).hide();
-            resetForms();
-        }
-    });
-    
-    // ESC key closes modals
-    $(document).on('keydown', function(e) {
-        if (e.keyCode === 27 && $('.modal-dialog:visible').length > 0) {
-            $('.modal-dialog:visible').hide();
-            resetForms();
-        }
-    });
-    // === POPRAWKA NONCE ===
-    // Użyj tego samego nonce co w głównym mix-creator
-    const fixedNonce = $('#herbal-mix-nonce').val() || 
-                      (typeof herbalMixData !== 'undefined' ? herbalMixData.nonce : 'fallback');
-    
-    console.log('Using nonce:', fixedNonce);
-    
-    // === POPRAWKA EDIT MODAL ===
-    $(document).off('click', '.edit-mix').on('click', '.edit-mix', function(e) {
-        e.preventDefault();
-        
-        const mixId = $(this).data('mix-id');
-        console.log('Edit mix clicked, ID:', mixId);
-        
-        if (!mixId) {
-            alert('Invalid mix ID');
-            return;
-        }
-        
-        const $button = $(this);
-        const originalText = $button.text();
-        $button.text('Loading...').prop('disabled', true);
-        
-        // KROK 1: Pobierz podstawowe dane mieszanki
-        $.ajax({
-            url: window.ajaxurl || '/wp-admin/admin-ajax.php',
-            type: 'POST',
-            data: {
-                action: 'get_mix_details',
-                nonce: fixedNonce,
-                mix_id: mixId
-            },
-            success: function(response) {
-                console.log('Mix details response:', response);
-                
-                if (response.success && response.data) {
-                    // Wypełnij podstawowe pola
-                    $('#edit-mix-id').val(response.data.id);
-                    $('#edit-mix-name').val(response.data.name);
-                    $('#edit-mix-description').val(response.data.description || '');
-                    
-                    // Obsłuż obrazek
-                    if (response.data.image) {
-                        $('#edit-mix-image').val(response.data.image);
-                        $('#edit-mix-image-preview').attr('src', response.data.image).show();
-                        $('#edit-mix-image-remove').show();
-                    }
-                    
-                    // Pokaż modal
-                    $('#edit-mix-modal').show();
-                    
-                    // KROK 2: Pobierz dane receptury - POPRAWKA!
-                    loadRecipeData(mixId);
-                    
-                } else {
-                    alert('Error: ' + (response.data || 'Failed to load mix details'));
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Edit mix error:', error, xhr.responseText);
-                alert('Connection error. Please try again.');
-            },
-            complete: function() {
-                $button.text(originalText).prop('disabled', false);
-            }
-        });
-    });
-    
-    // === NOWA FUNKCJA: Ładowanie danych receptury ===
-    function loadRecipeData(mixId) {
-        console.log('Loading recipe data for mix:', mixId);
-        
-        // Wyświetl loading state
-        $('#edit-mix-ingredients-preview').html('<p style="text-align: center; color: #666; padding: 20px;">Loading recipe data...</p>');
-        
-        $.ajax({
-            url: window.ajaxurl || '/wp-admin/admin-ajax.php',
-            type: 'POST',
-            data: {
-                action: 'get_mix_recipe_and_pricing',
-                nonce: fixedNonce,
-                mix_id: mixId,
-                action_type: 'edit'
-            },
-            success: function(response) {
-                console.log('Recipe data response:', response);
-                
-                if (response.success && response.data && response.data.recipe) {
-                    const recipe = response.data.recipe;
-                    
-                    // POPRAWKA: Wypełnij sekcję receptury
-                    displayRecipePreview(recipe);
-                    
-                    // POPRAWKA: Aktualizuj ceny
-                    updatePricing(recipe);
-                    
-                } else {
-                    console.error('Failed to load recipe data:', response);
-                    $('#edit-mix-ingredients-preview').html('<p style="color: #999;">Recipe data not available</p>');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Recipe data error:', error, xhr.responseText);
-                $('#edit-mix-ingredients-preview').html('<p style="color: #ff0000;">Error loading recipe data</p>');
-            }
-        });
-    }
-    
-    // === FUNKCJA: Wyświetl podgląd receptury ===
-    function displayRecipePreview(recipe) {
-        let html = '';
-        
-        // Informacje o opakowaniu
-        if (recipe.packaging && recipe.packaging.name) {
-            html += `
-                <div style="background: #f0f8f4; padding: 12px; border-radius: 6px; margin-bottom: 15px; border-left: 4px solid #2a6a3c;">
-                    <h5 style="margin: 0 0 8px 0; color: #2a6a3c; font-size: 14px;">Packaging</h5>
-                    <p style="margin: 0; font-size: 14px;">
-                        <strong>${escapeHtml(recipe.packaging.name)}</strong> (${recipe.packaging.capacity}g capacity)<br>
-                        Price: £${recipe.packaging.price.toFixed(2)}
-                    </p>
-                </div>
-            `;
-        }
-        
-        // Lista składników
-        if (recipe.ingredients && recipe.ingredients.length > 0) {
-            html += '<h5 style="margin: 15px 0 10px 0; color: #2a6a3c; font-size: 14px;">Ingredients</h5>';
-            html += '<div style="border: 1px solid #eee; border-radius: 6px; overflow: hidden;">';
-            
-            recipe.ingredients.forEach(function(ingredient, index) {
-                const bgColor = index % 2 === 0 ? '#fff' : '#f9f9f9';
-                html += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: ${bgColor}; border-bottom: 1px solid #eee;">
-                        <span style="font-weight: 500; color: #333;">${escapeHtml(ingredient.name)}</span>
-                        <span style="color: #666; margin: 0 15px;">${ingredient.weight}g</span>
-                        <span style="font-weight: bold; color: #2a6a3c;">£${ingredient.total_price.toFixed(2)}</span>
-                    </div>
-                `;
-            });
-            
-            html += '</div>';
-        }
-        
-        // Podsumowanie
-        if (recipe.total_weight !== undefined && recipe.total_price !== undefined) {
-            html += `
-                <div style="margin-top: 15px; padding-top: 12px; border-top: 2px solid #2a6a3c;">
-                    <p style="margin: 5px 0; font-weight: 500; font-size: 14px;">
-                        <strong>Total Weight:</strong> ${recipe.total_weight}g
-                    </p>
-                </div>
-            `;
-        }
-        
-        if (!html) {
-            html = '<p style="color: #999; text-align: center; padding: 20px;">No recipe data available</p>';
-        }
-        
-        $('#edit-mix-ingredients-preview').html(html);
-    }
-    
-    // === FUNKCJA: Aktualizuj ceny ===
-    function updatePricing(recipe) {
-        const currencySymbol = '£'; // UK market
-        
-        if (recipe.total_price !== undefined) {
-            $('#edit-mix-price').text(`${currencySymbol}${recipe.total_price.toFixed(2)}`);
-        }
-        
-        if (recipe.total_points !== undefined) {
-            $('#edit-mix-points-price').text(`${Math.round(recipe.total_points)} pts`);
-            // Zakładając 10% punktów earned
-            $('#edit-mix-points-earned').text(`${Math.round(recipe.total_points * 0.1)} pts`);
-        }
-    }
-    
-    // === POPRAWKA CLOSE BUTTON ===
-    $(document).off('click', '.close-modal, .cancel-modal, .edit-close').on('click', '.close-modal, .cancel-modal, .edit-close', function(e) {
-        e.preventDefault();
-        console.log('Modal close clicked');
-        
-        // Znajdź modal i zamknij
-        const $modal = $(this).closest('.modal-dialog');
-        if ($modal.length) {
-            $modal.hide();
-        } else {
-            // Fallback - zamknij wszystkie modale
-            $('.modal-dialog').hide();
-        }
-        
-        // Resetuj formularze
-        $('#edit-mix-form')[0]?.reset();
-        $('#edit-mix-ingredients-preview').empty();
-        $('#edit-mix-image-preview').hide();
-        $('#edit-mix-image-remove').hide();
-    });
-    
-    // === UTILITY FUNCTION ===
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    console.log('Edit modal fix applied successfully');
-});
-
-// === DODAJ NONCE DO STRONY JEŚLI BRAKUJE ===
-if (!document.getElementById('herbal-mix-nonce')) {
-    jQuery(function($) {
-        // Spróbuj użyć istniejącego nonce z herbalMixData
-        const nonce = (typeof herbalMixData !== 'undefined' && herbalMixData.nonce) ? 
-                     herbalMixData.nonce : 'fallback_nonce';
-        
-        $('body').append('<input type="hidden" id="herbal-mix-nonce" value="' + nonce + '">');
-        console.log('Added herbal-mix-nonce to page:', nonce);
-    });
-}
+    const ajaxUrl = herbalProfileData.ajaxUrl;
+    const nonce = herbalProfileData.nonce || herbalProfileData.getNonce;
+    const currencySymbol = herbalProfileData.currencySymbol || '£';
     
     // === EDIT MIX FUNCTIONALITY ===
+    
+    // Handle Edit button click
     $(document).on('click', '.edit-mix', function(e) {
         e.preventDefault();
         
-        const mixId = $(this).data('mix-id');
-        console.log('Edit mix clicked, ID:', mixId);
+        const $button = $(this);
+        const mixId = $button.data('mix-id');
         
         if (!mixId) {
             showNotification('Invalid mix ID', 'error');
             return;
         }
         
-        // Show loading state
-        const $button = $(this);
-        setButtonLoading($button, true, 'Loading...');
+        console.log('Opening edit modal for mix:', mixId);
+        
+        setButtonLoading($button, true);
         
         // Load mix details
         $.ajax({
-            url: herbalProfileData.ajaxUrl,
+            url: ajaxUrl,
             type: 'POST',
             data: {
                 action: 'get_mix_details',
-                nonce: herbalProfileData.getNonce,
+                nonce: nonce,
                 mix_id: mixId
             },
             success: function(response) {
-                console.log('Edit mix response:', response);
+                console.log('Mix details response:', response);
                 
                 if (response.success && response.data) {
-                    currentMixData = response.data;
-                    
-                    // Populate edit form
-                    $('#edit-mix-id').val(response.data.id);
-                    $('#edit-mix-name').val(response.data.name);
-                    
-                    // Show modal
+                    populateEditForm(response.data);
+                    loadRecipeData(mixId, 'edit');
                     $('#edit-mix-modal').show();
-                    
-                    // Focus on name field
-                    setTimeout(() => {
-                        $('#edit-mix-name').focus().select();
-                    }, 100);
-                    
-                    // Validate form
-                    validateEditForm();
                 } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
+                    showNotification('Error: ' + (response.data || 'Failed to load mix details'), 'error');
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Edit mix AJAX error:', error, xhr.responseText);
+                console.error('Edit mix error:', error, xhr.responseText);
                 handleAjaxError(xhr, status, error, 'Edit Mix');
             },
             complete: function() {
@@ -374,117 +74,47 @@ if (!document.getElementById('herbal-mix-nonce')) {
         });
     });
     
-    // === PUBLISH MIX FUNCTIONALITY ===
-    $(document).on('click', '.publish-mix', function(e) {
+    // === PUBLISH MIX MODAL FUNCTIONALITY ===
+    
+    // Handle Show Publish Modal button click
+    $(document).on('click', '.show-publish-modal', function(e) {
         e.preventDefault();
         
-        const mixId = $(this).data('mix-id');
-        console.log('Publish mix clicked, ID:', mixId);
+        const $button = $(this);
+        const mixId = $button.data('mix-id');
         
         if (!mixId) {
             showNotification('Invalid mix ID', 'error');
             return;
         }
         
-        const $button = $(this);
-        setButtonLoading($button, true, 'Loading...');
+        console.log('Opening publish modal for mix:', mixId);
         
-        // Load mix details
+        setButtonLoading($button, true);
+        
+        // Load mix details for publish
         $.ajax({
-            url: herbalProfileData.ajaxUrl,
+            url: ajaxUrl,
             type: 'POST',
             data: {
                 action: 'get_mix_details',
-                nonce: herbalProfileData.getNonce,
+                nonce: nonce,
                 mix_id: mixId
             },
             success: function(response) {
-                console.log('Publish mix response:', response);
+                console.log('Publish mix details response:', response);
                 
                 if (response.success && response.data) {
-                    currentMixData = response.data;
-                    
-                    // Populate publish form
-                    $('#publish-mix-id').val(response.data.id);
-                    $('#publish-mix-name').val(response.data.name);
-                    $('#publish-mix-description').val(response.data.description || '');
-                    
-                    // Clear and reset image field
-                    $('#publish_mix_image').val('');
-                    resetImagePreview('publish_mix_image');
-                    
-                    // Show modal
+                    populatePublishForm(response.data);
+                    loadRecipeData(mixId, 'publish');
                     $('#publish-mix-modal').show();
-                    
-                    // Initialize media handler for this modal
-                    if (typeof window.herbalMediaHandler !== 'undefined') {
-                        window.herbalMediaHandler.init();
-                    }
-                    
-                    // Focus on appropriate field
-                    setTimeout(() => {
-                        if (!$('#publish-mix-name').val()) {
-                            $('#publish-mix-name').focus();
-                        } else if (!$('#publish-mix-description').val()) {
-                            $('#publish-mix-description').focus();
-                        } else {
-                            $('#publish_mix_image_select_btn').focus();
-                        }
-                    }, 200);
-                    
-                    // Validate form
-                    validatePublishForm();
                 } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
+                    showNotification('Error: ' + (response.data || 'Failed to load mix details'), 'error');
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Publish mix AJAX error:', error, xhr.responseText);
-                handleAjaxError(xhr, status, error, 'Publish Mix');
-            },
-            complete: function() {
-                setButtonLoading($button, false);
-            }
-        });
-    });
-    
-    // === VIEW MIX FUNCTIONALITY ===
-    $(document).on('click', '.view-mix', function(e) {
-        e.preventDefault();
-        
-        const mixId = $(this).data('mix-id');
-        console.log('View mix clicked, ID:', mixId);
-        
-        if (!mixId) {
-            showNotification('Invalid mix ID', 'error');
-            return;
-        }
-        
-        const $button = $(this);
-        setButtonLoading($button, true, 'Loading...');
-        
-        // Load mix details and recipe
-        $.ajax({
-            url: herbalProfileData.ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'get_mix_recipe_and_pricing',
-                nonce: herbalProfileData.recipeNonce || herbalProfileData.getNonce,
-                mix_id: mixId,
-                action_type: 'view'
-            },
-            success: function(response) {
-                console.log('View mix response:', response);
-                
-                if (response.success && response.data) {
-                    showViewModal(response.data);
-                } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('View mix AJAX error:', error, xhr.responseText);
-                handleAjaxError(xhr, status, error, 'View Mix');
+                console.error('Publish modal error:', error, xhr.responseText);
+                handleAjaxError(xhr, status, error, 'Publish Modal');
             },
             complete: function() {
                 setButtonLoading($button, false);
@@ -493,6 +123,8 @@ if (!document.getElementById('herbal-mix-nonce')) {
     });
     
     // === DELETE MIX FUNCTIONALITY ===
+    
+    // Handle Delete button click
     $(document).on('click', '.delete-mix', function(e) {
         e.preventDefault();
         
@@ -505,53 +137,152 @@ if (!document.getElementById('herbal-mix-nonce')) {
             return;
         }
         
-        if (!confirm(herbalProfileData.strings.confirmDelete)) {
+        if (!confirm(herbalProfileData.strings?.confirmDelete || 'Are you sure you want to delete this mix?')) {
             return;
         }
         
-        console.log('Delete mix clicked, ID:', mixId);
+        console.log('Deleting mix:', mixId);
         
-        setButtonLoading($button, true, herbalProfileData.strings.deleting);
+        setButtonLoading($button, true, 'Deleting...');
         
         $.ajax({
-            url: herbalProfileData.ajaxUrl,
+            url: ajaxUrl,
             type: 'POST',
             data: {
                 action: 'delete_mix',
-                nonce: herbalProfileData.deleteNonce || herbalProfileData.deleteMixNonce,
+                nonce: herbalProfileData.deleteNonce || nonce,
                 mix_id: mixId
             },
             success: function(response) {
                 console.log('Delete mix response:', response);
                 
                 if (response.success) {
-                    showNotification(herbalProfileData.strings.deleteSuccess, 'success');
+                    showNotification('Mix deleted successfully!', 'success');
                     
-                    // Remove the row with animation
+                    // Remove row with animation
                     $row.fadeOut(300, function() {
                         $(this).remove();
                         
-                        // Check if table is empty
-                        if ($('.mixes-table tbody tr:visible').length === 0) {
+                        // Check if table is empty and reload if needed
+                        if ($('.herbal-mixes-table tbody tr:visible').length === 0) {
                             setTimeout(() => {
                                 location.reload();
                             }, 500);
                         }
                     });
                 } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
+                    showNotification('Error: ' + (response.data || 'Failed to delete mix'), 'error');
                     setButtonLoading($button, false);
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Delete mix AJAX error:', error, xhr.responseText);
+                console.error('Delete mix error:', error, xhr.responseText);
                 handleAjaxError(xhr, status, error, 'Delete Mix');
                 setButtonLoading($button, false);
             }
         });
     });
     
+    // === VIEW MIX FUNCTIONALITY ===
+    
+    // Handle View button click
+    $(document).on('click', '.view-mix', function(e) {
+        e.preventDefault();
+        
+        const mixId = $(this).data('mix-id');
+        const $button = $(this);
+        
+        if (!mixId) {
+            showNotification('Invalid mix ID', 'error');
+            return;
+        }
+        
+        console.log('Viewing mix:', mixId);
+        
+        setButtonLoading($button, true);
+        
+        $.ajax({
+            url: ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'view_mix',
+                nonce: nonce,
+                mix_id: mixId
+            },
+            success: function(response) {
+                console.log('View mix response:', response);
+                
+                if (response.success && response.data) {
+                    showViewModal(response.data);
+                } else {
+                    showNotification('Error: ' + (response.data || 'Failed to load mix details'), 'error');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('View mix error:', error, xhr.responseText);
+                handleAjaxError(xhr, status, error, 'View Mix');
+            },
+            complete: function() {
+                setButtonLoading($button, false);
+            }
+        });
+    });
+    
+    // === BUY MIX FUNCTIONALITY ===
+    
+    // Handle Buy button click
+    $(document).on('click', '.buy-mix', function(e) {
+        e.preventDefault();
+        
+        const mixId = $(this).data('mix-id');
+        const $button = $(this);
+        
+        if (!mixId) {
+            showNotification('Invalid mix ID', 'error');
+            return;
+        }
+        
+        console.log('Buying mix:', mixId);
+        
+        setButtonLoading($button, true, 'Adding to cart...');
+        
+        $.ajax({
+            url: ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'buy_mix',
+                nonce: herbalProfileData.buyMixNonce || nonce,
+                mix_id: mixId
+            },
+            success: function(response) {
+                console.log('Buy mix response:', response);
+                
+                if (response.success) {
+                    showNotification('Added to cart successfully!', 'success');
+                    
+                    // Optional: redirect to cart
+                    if (response.data && response.data.cart_url) {
+                        if (confirm('Go to cart now?')) {
+                            window.location.href = response.data.cart_url;
+                        }
+                    }
+                } else {
+                    showNotification('Error: ' + (response.data || 'Failed to add to cart'), 'error');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Buy mix error:', error, xhr.responseText);
+                handleAjaxError(xhr, status, error, 'Buy Mix');
+            },
+            complete: function() {
+                setButtonLoading($button, false);
+            }
+        });
+    });
+    
     // === REMOVE FAVORITE FUNCTIONALITY ===
+    
+    // Handle Remove Favorite button click
     $(document).on('click', '.remove-favorite', function(e) {
         e.preventDefault();
         
@@ -564,20 +295,20 @@ if (!document.getElementById('herbal-mix-nonce')) {
             return;
         }
         
-        if (!confirm(herbalProfileData.strings.confirmRemoveFavorite)) {
+        if (!confirm('Remove this mix from your favorites?')) {
             return;
         }
         
-        console.log('Remove favorite clicked, ID:', mixId);
+        console.log('Removing favorite:', mixId);
         
         setButtonLoading($button, true, 'Removing...');
         
         $.ajax({
-            url: herbalProfileData.ajaxUrl,
+            url: ajaxUrl,
             type: 'POST',
             data: {
                 action: 'remove_favorite_mix',
-                nonce: herbalProfileData.favoritesNonce || herbalProfileData.getNonce,
+                nonce: herbalProfileData.favoritesNonce || nonce,
                 mix_id: mixId
             },
             success: function(response) {
@@ -589,278 +320,483 @@ if (!document.getElementById('herbal-mix-nonce')) {
                     $row.fadeOut(300, function() {
                         $(this).remove();
                         
-                        if ($('.mixes-table tbody tr:visible').length === 0) {
+                        if ($('.herbal-mixes-table tbody tr:visible').length === 0) {
                             setTimeout(() => {
                                 location.reload();
                             }, 500);
                         }
                     });
                 } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
+                    showNotification('Error: ' + (response.data || 'Failed to remove from favorites'), 'error');
                     setButtonLoading($button, false);
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Remove favorite AJAX error:', error, xhr.responseText);
+                console.error('Remove favorite error:', error, xhr.responseText);
                 handleAjaxError(xhr, status, error, 'Remove Favorite');
                 setButtonLoading($button, false);
             }
         });
     });
     
-    // === BUY MIX FUNCTIONALITY ===
-    $(document).on('click', '.buy-mix', function(e) {
-        e.preventDefault();
+    // === FORM FUNCTIONS ===
+    
+    // Populate edit form with mix data
+    function populateEditForm(mixData) {
+        $('#edit-mix-id').val(mixData.id);
+        $('#edit-mix-name').val(mixData.name || '');
+        $('#edit-mix-description').val(mixData.description || '');
         
-        const mixId = $(this).data('mix-id');
-        const $button = $(this);
+        // Handle image preview
+        if (mixData.image) {
+            $('#edit-mix-image').val(mixData.image);
+            $('#edit-mix-image-preview').attr('src', mixData.image).show();
+            $('#edit-mix-image-remove').show();
+        } else {
+            $('#edit-mix-image').val('');
+            $('#edit-mix-image-preview').hide();
+            $('#edit-mix-image-remove').hide();
+        }
         
-        if (!mixId) {
-            showNotification('Invalid mix ID', 'error');
+        // Enable/disable update button
+        $('#edit-update-button').prop('disabled', !mixData.name);
+    }
+    
+    // Populate publish form with mix data
+    function populatePublishForm(mixData) {
+        $('#publish-mix-id').val(mixData.id);
+        $('#publish-mix-name').val(mixData.name || '');
+        $('#publish-mix-description').val(mixData.description || '');
+        
+        // Handle image preview
+        if (mixData.image) {
+            $('#publish-mix-image').val(mixData.image);
+            $('#publish-mix-image-preview').attr('src', mixData.image).show();
+            $('#publish-mix-image-remove').show();
+        } else {
+            $('#publish-mix-image').val('');
+            $('#publish-mix-image-preview').hide();
+            $('#publish-mix-image-remove').hide();
+        }
+        
+        // Reset checkbox and button
+        $('#publish-confirm').prop('checked', false);
+        $('#publish-button').prop('disabled', true);
+    }
+    
+    // Load recipe data for modal (Edit or Publish)
+    function loadRecipeData(mixId, modalType = 'edit') {
+        console.log('Loading recipe data for mix:', mixId, 'Modal type:', modalType);
+        
+        const previewSelector = modalType === 'edit' ? '#edit-mix-ingredients-preview' : '#publish-mix-ingredients-preview';
+        
+        $(previewSelector).html('<div class="recipe-loading"><p>Loading recipe data...</p></div>');
+        
+        $.ajax({
+            url: ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'get_mix_recipe_and_pricing',
+                nonce: nonce,
+                mix_id: mixId,
+                action_type: modalType
+            },
+            success: function(response) {
+                console.log('Recipe data response:', response);
+                
+                if (response.success && response.data && response.data.recipe) {
+                    displayRecipePreview(response.data.recipe, modalType);
+                    updatePricing(response.data.recipe, modalType);
+                } else {
+                    $(previewSelector).html('<div class="recipe-error"><p>Recipe data not available</p></div>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Recipe data error:', error, xhr.responseText);
+                $(previewSelector).html('<div class="recipe-error"><p>Error loading recipe data</p></div>');
+            }
+        });
+    }
+    
+    // Display recipe preview (dla Edit lub Publish)
+    function displayRecipePreview(recipe, modalType = 'edit') {
+        if (!recipe) {
+            const previewSelector = modalType === 'edit' ? '#edit-mix-ingredients-preview' : '#publish-mix-ingredients-preview';
+            $(previewSelector).html('<div class="recipe-error"><p>No recipe data available</p></div>');
             return;
         }
         
-        console.log('Buy mix clicked, ID:', mixId);
+        let html = '<div class="recipe-preview">';
         
-        setButtonLoading($button, true, 'Adding to cart...');
+        // Packaging section
+        if (recipe.packaging && recipe.packaging.name) {
+            html += `
+                <div class="packaging-section">
+                    <h5 class="section-title">Packaging</h5>
+                    <div class="packaging-item">
+                        <div class="item-details">
+                            <span class="item-name">${escapeHtml(recipe.packaging.name)}</span>
+                            <span class="item-capacity">(${recipe.packaging.capacity}g capacity)</span>
+                        </div>
+                        <div class="item-pricing">
+                            <span class="item-price">${currencySymbol}${recipe.packaging.price.toFixed(2)}</span>
+                            <span class="item-points">${Math.round(recipe.packaging.points)} pts</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
         
-        $.ajax({
-            url: herbalProfileData.ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'buy_mix',
-                nonce: herbalProfileData.buyMixNonce || herbalProfileData.getNonce,
-                mix_id: mixId
-            },
-            success: function(response) {
-                console.log('Buy mix response:', response);
-                
-                if (response.success) {
-                    showNotification('Added to cart!', 'success');
-                    
-                    if (response.data && response.data.cart_url) {
-                        if (confirm('Go to cart now?')) {
-                            window.location.href = response.data.cart_url;
-                            return;
-                        }
-                    }
-                } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
-                }
-                
-                setButtonLoading($button, false);
-            },
-            error: function(xhr, status, error) {
-                console.error('Buy mix AJAX error:', error, xhr.responseText);
-                handleAjaxError(xhr, status, error, 'Buy Mix');
-                setButtonLoading($button, false);
+        // Ingredients section
+        if (recipe.ingredients && recipe.ingredients.length > 0) {
+            html += `
+                <div class="ingredients-section">
+                    <h5 class="section-title">Ingredients (${recipe.ingredients.length})</h5>
+                    <div class="ingredients-list">
+            `;
+            
+            recipe.ingredients.forEach(function(ingredient) {
+                const imageUrl = ingredient.image || '';
+                html += `
+                    <div class="ingredient-item">
+                        <div class="ingredient-info">
+                            ${imageUrl ? `<img src="${imageUrl}" alt="${escapeHtml(ingredient.name)}" class="ingredient-image">` : ''}
+                            <div class="ingredient-details">
+                                <span class="ingredient-name">${escapeHtml(ingredient.name)}</span>
+                                <span class="ingredient-weight">${ingredient.weight}g</span>
+                            </div>
+                        </div>
+                        <div class="ingredient-pricing">
+                            <span class="ingredient-price">${currencySymbol}${ingredient.total_price.toFixed(2)}</span>
+                            <span class="ingredient-points">${Math.round(ingredient.total_points)} pts</span>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div></div>';
+        }
+        
+        // Totals section
+        if (recipe.total_weight !== undefined && recipe.total_price !== undefined) {
+            html += `
+                <div class="recipe-totals">
+                    <div class="totals-row">
+                        <span class="totals-label">Total Weight:</span>
+                        <span class="totals-value">${recipe.total_weight}g</span>
+                    </div>
+                    <div class="totals-row">
+                        <span class="totals-label">Total Price:</span>
+                        <span class="totals-value">${currencySymbol}${recipe.total_price.toFixed(2)}</span>
+                    </div>
+                    <div class="totals-row">
+                        <span class="totals-label">Total Points:</span>
+                        <span class="totals-value">${Math.round(recipe.total_points)} pts</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        
+        const previewSelector = modalType === 'edit' ? '#edit-mix-ingredients-preview' : '#publish-mix-ingredients-preview';
+        $(previewSelector).html(html);
+    }
+    
+    // Update pricing section (dla Edit lub Publish)
+    function updatePricing(recipe, modalType = 'edit') {
+        const prefix = modalType === 'edit' ? 'edit' : 'publish';
+        
+        if (recipe.total_price !== undefined) {
+            $(`#${prefix}-mix-price`).text(`${currencySymbol}${recipe.total_price.toFixed(2)}`);
+        }
+        
+        if (recipe.total_points !== undefined) {
+            $(`#${prefix}-mix-points-price`).text(`${Math.round(recipe.total_points)} pts`);
+            
+            if (modalType === 'edit') {
+                const pointsEarned = Math.round(recipe.total_points * 0.1);
+                $('#edit-mix-points-earned').text(`${pointsEarned} pts`);
+            } else {
+                // For publish - fixed 50 points reward
+                $('#publish-mix-points-earned').text('50 pts');
             }
-        });
+        }
+    }
+    
+    // === FORM VALIDATION ===
+    
+    // Enable/disable update button based on name input
+    $(document).on('input', '#edit-mix-name', function() {
+        const hasValue = $(this).val().trim() !== '';
+        $('#edit-update-button').prop('disabled', !hasValue);
     });
     
-    // === FORM SUBMISSION HANDLERS ===
+    // Enable/disable publish button based on inputs
+    $(document).on('input change', '#publish-mix-name, #publish-confirm', function() {
+        const hasName = $('#publish-mix-name').val().trim() !== '';
+        const isConfirmed = $('#publish-confirm').is(':checked');
+        $('#publish-button').prop('disabled', !(hasName && isConfirmed));
+    });
     
-    // Edit form submission
+    // === FORM SUBMISSION ===
+    
+    // Handle edit form submission
     $(document).on('submit', '#edit-mix-form', function(e) {
         e.preventDefault();
-        
-        if (isFormSubmitting) return;
         
         const mixName = $('#edit-mix-name').val().trim();
         if (!mixName) {
             showNotification('Please enter a mix name.', 'error');
-            $('#edit-mix-name').focus();
             return;
         }
         
-        isFormSubmitting = true;
-        const $submitButton = $('#edit-update-button');
-        setButtonLoading($submitButton, true, 'Updating...');
+        const $button = $('#edit-update-button');
         
         const formData = {
             action: 'update_mix_details',
-            nonce: herbalProfileData.updateMixNonce,
+            nonce: nonce,
             mix_id: $('#edit-mix-id').val(),
-            mix_name: mixName
+            mix_name: mixName,
+            mix_description: $('#edit-mix-description').val(),
+            mix_image: $('#edit-mix-image').val()
         };
         
-        console.log('Submitting edit form:', formData);
+        setButtonLoading($button, true, 'Updating...');
         
         $.ajax({
-            url: herbalProfileData.ajaxUrl,
+            url: ajaxUrl,
             type: 'POST',
             data: formData,
             success: function(response) {
-                console.log('Edit form response:', response);
-                
                 if (response.success) {
-                    showNotification(herbalProfileData.strings.updateSuccess, 'success');
+                    showNotification('Mix updated successfully!', 'success');
                     $('#edit-mix-modal').hide();
-                    
-                    // Update the name in the table
-                    $('.edit-mix[data-mix-id="' + $('#edit-mix-id').val() + '"]')
-                        .closest('tr').find('td:first strong').text(mixName);
-                    
-                    resetForms();
+                    location.reload();
                 } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
+                    showNotification('Error: ' + (response.data || 'Failed to update mix.'), 'error');
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Edit form AJAX error:', error, xhr.responseText);
+                console.error('Update error:', error);
                 handleAjaxError(xhr, status, error, 'Update Mix');
             },
             complete: function() {
-                isFormSubmitting = false;
-                setButtonLoading($submitButton, false);
+                setButtonLoading($button, false);
             }
         });
     });
     
-    // Publish form submission
+    // Handle publish form submission
     $(document).on('submit', '#publish-mix-form', function(e) {
         e.preventDefault();
         
-        if (isFormSubmitting) return;
-        
-        if (!validatePublishForm()) {
-            showNotification('Please fill in all required fields.', 'error');
+        const mixName = $('#publish-mix-name').val().trim();
+        if (!mixName) {
+            showNotification('Please enter a mix name.', 'error');
             return;
         }
         
-        isFormSubmitting = true;
-        const $submitButton = $('#publish-button');
-        setButtonLoading($submitButton, true, 'Publishing...');
+        if (!$('#publish-confirm').is(':checked')) {
+            showNotification('Please confirm that you understand the publishing terms.', 'error');
+            return;
+        }
+        
+        const $button = $('#publish-button');
         
         const formData = {
             action: 'publish_mix',
-            nonce: herbalProfileData.publishNonce,
+            nonce: herbalProfileData.publishNonce || nonce,
             mix_id: $('#publish-mix-id').val(),
-            mix_name: $('#publish-mix-name').val().trim(),
-            mix_description: $('#publish-mix-description').val().trim(),
-            mix_image: $('#publish_mix_image').val()
+            mix_name: mixName,
+            mix_description: $('#publish-mix-description').val(),
+            mix_image: $('#publish-mix-image').val()
         };
         
-        console.log('Submitting publish form:', formData);
+        setButtonLoading($button, true, 'Publishing...');
         
         $.ajax({
-            url: herbalProfileData.ajaxUrl,
+            url: ajaxUrl,
             type: 'POST',
             data: formData,
             success: function(response) {
-                console.log('Publish form response:', response);
-                
                 if (response.success) {
-                    showNotification(herbalProfileData.strings.publishSuccess, 'success');
+                    showNotification('Mix published successfully! You earned 50 points.', 'success');
                     $('#publish-mix-modal').hide();
-                    resetForms();
                     
-                    // Reload to show updated status
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1000);
+                    // Update the button in the table
+                    const mixId = $('#publish-mix-id').val();
+                    const $row = $(`tr[data-mix-id="${mixId}"]`);
+                    $row.find('.show-publish-modal').remove();
+                    $row.find('.status-badge').removeClass('status-favorite status-draft')
+                        .addClass('status-published').text('Published');
+                    
+                    // Add View button and remove Edit button
+                    $row.find('.edit-mix').remove();
+                    $row.find('.mix-actions').prepend(`
+                        <button type="button" class="button button-small view-mix" data-mix-id="${mixId}">
+                            View
+                        </button>
+                    `);
+                    
                 } else {
-                    showNotification('Error: ' + (response.data || herbalProfileData.strings.error), 'error');
+                    showNotification('Error: ' + (response.data || 'Failed to publish mix.'), 'error');
                 }
             },
             error: function(xhr, status, error) {
-                console.error('Publish form AJAX error:', error, xhr.responseText);
+                console.error('Publish error:', error);
                 handleAjaxError(xhr, status, error, 'Publish Mix');
             },
             complete: function() {
-                isFormSubmitting = false;
-                setButtonLoading($submitButton, false);
+                setButtonLoading($button, false);
             }
         });
     });
     
-    // === FORM VALIDATION ===
+    // === IMAGE UPLOAD FUNCTIONALITY ===
     
-    function validateEditForm() {
-        const nameValid = $('#edit-mix-name').val().trim() !== '';
-        $('#edit-update-button').prop('disabled', !nameValid);
-        
-        toggleFieldError('#edit-mix-name', !nameValid && $('#edit-mix-name').val() !== '');
-        
-        return nameValid;
-    }
-    
-    function validatePublishForm() {
-        const nameValid = $('#publish-mix-name').val().trim() !== '';
-        const descriptionValid = $('#publish-mix-description').val().trim() !== '';
-        const imageValid = $('#publish_mix_image').val() !== '';
-        
-        const allValid = nameValid && descriptionValid && imageValid;
-        $('#publish-button').prop('disabled', !allValid);
-        
-        // Visual feedback
-        toggleFieldError('#publish-mix-name', !nameValid && $('#publish-mix-name').val() !== '');
-        toggleFieldError('#publish-mix-description', !descriptionValid && $('#publish-mix-description').val() !== '');
-        
-        // Image error message
-        const $imageError = $('#publish_mix_image_error');
-        if (!imageValid && $imageError.length) {
-            $imageError.text(herbalProfileData.strings.imageRequired).show();
-        } else if ($imageError.length) {
-            $imageError.hide();
+    // Handle image upload for Edit
+    $(document).on('change', '#edit-mix-image-input', function() {
+        const file = this.files[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                showNotification('Image file is too large. Please choose a file smaller than 5MB.', 'error');
+                this.value = '';
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                $('#edit-mix-image-preview').attr('src', e.target.result).show();
+                $('#edit-mix-image-remove').show();
+                $('#edit-mix-image').val('uploaded'); // Temporary value
+            };
+            reader.readAsDataURL(file);
         }
-        
-        return allValid;
-    }
+    });
     
-    function toggleFieldError(selector, hasError) {
-        const $field = $(selector);
-        if (hasError) {
-            $field.addClass('error');
+    // Handle image upload for Publish
+    $(document).on('change', '#publish-mix-image-input', function() {
+        const file = this.files[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                showNotification('Image file is too large. Please choose a file smaller than 5MB.', 'error');
+                this.value = '';
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                $('#publish-mix-image-preview').attr('src', e.target.result).show();
+                $('#publish-mix-image-remove').show();
+                $('#publish-mix-image').val('uploaded'); // Temporary value
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // Remove image for Edit
+    $(document).on('click', '#edit-mix-image-remove', function() {
+        $('#edit-mix-image').val('');
+        $('#edit-mix-image-input').val('');
+        $('#edit-mix-image-preview').hide();
+        $(this).hide();
+    });
+    
+    // Remove image for Publish
+    $(document).on('click', '#publish-mix-image-remove', function() {
+        $('#publish-mix-image').val('');
+        $('#publish-mix-image-input').val('');
+        $('#publish-mix-image-preview').hide();
+        $(this).hide();
+    });
+    
+    // === MODAL FUNCTIONALITY ===
+    
+    // Close modal functionality
+    $(document).on('click', '.close-modal, .cancel-modal, .edit-close', function(e) {
+        e.preventDefault();
+        
+        const $modal = $(this).closest('.modal-dialog');
+        if ($modal.length) {
+            $modal.hide();
         } else {
-            $field.removeClass('error');
+            $('.modal-dialog').hide();
         }
+        
+        resetForms();
+    });
+    
+    // Close modal when clicking outside
+    $(document).on('click', '.modal-dialog', function(e) {
+        if (e.target === this) {
+            $(this).hide();
+            resetForms();
+        }
+    });
+    
+    // ESC key to close modal
+    $(document).on('keydown', function(e) {
+        if (e.keyCode === 27) {
+            $('.modal-dialog').hide();
+            resetForms();
+        }
+    });
+    
+    // Reset all forms
+    function resetForms() {
+        $('#edit-mix-form')[0]?.reset();
+        $('#publish-mix-form')[0]?.reset();
+        $('#edit-mix-ingredients-preview').empty();
+        $('#publish-mix-ingredients-preview').empty();
+        $('#edit-mix-image-preview, #publish-mix-image-preview').hide();
+        $('#edit-mix-image-remove, #publish-mix-image-remove').hide();
+        $('#edit-update-button, #publish-button').prop('disabled', true);
+        
+        // Reset pricing
+        $('#edit-mix-price, #publish-mix-price').text('£0.00');
+        $('#edit-mix-points-price, #publish-mix-points-price').text('0 pts');
+        $('#edit-mix-points-earned').text('0 pts');
+        $('#publish-mix-points-earned').text('50 pts');
+        
+        // Reset checkbox
+        $('#publish-confirm').prop('checked', false);
     }
-    
-    // === FORM INPUT HANDLERS ===
-    
-    // Real-time validation
-    $(document).on('input', '#edit-mix-name', function() {
-        validateEditForm();
-    });
-    
-    $(document).on('input change', '#publish-mix-name, #publish-mix-description, #publish_mix_image', function() {
-        setTimeout(validatePublishForm, 50);
-    });
     
     // === VIEW MODAL FUNCTION ===
     
+    // Show view modal with mix details
     function showViewModal(data) {
-        console.log('Showing view modal with data:', data);
+        const { mix, recipe } = data;
         
-        if (!data || !data.mix) {
-            showNotification('Invalid mix data', 'error');
-            return;
-        }
-        
+        // Create modal HTML
         const modalHtml = `
             <div id="view-mix-modal" class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h3>${escapeHtml(data.mix.name)}</h3>
-                        <button type="button" class="modal-close">&times;</button>
+                        <h3>View Mix: ${escapeHtml(mix.name)}</h3>
+                        <button type="button" class="modal-close close-modal">&times;</button>
                     </div>
-                    <div class="view-mix-content">
+                    <div class="modal-body">
                         <div class="mix-info">
-                            ${data.mix.image ? `<div class="mix-image"><img src="${escapeHtml(data.mix.image)}" alt="${escapeHtml(data.mix.name)}" style="max-width: 200px; height: auto; border-radius: 8px; margin-bottom: 15px;"></div>` : ''}
-                            <p><strong>Description:</strong> ${escapeHtml(data.mix.description || 'No description provided')}</p>
-                            <p><strong>Status:</strong> <span class="status-badge status-${escapeHtml(data.mix.status)}">${escapeHtml(data.mix.status)}</span></p>
+                            <p><strong>Author:</strong> ${escapeHtml(mix.author || 'Unknown')}</p>
+                            <p><strong>Created:</strong> ${mix.created_at}</p>
+                            ${mix.description ? `<p><strong>Description:</strong> ${escapeHtml(mix.description)}</p>` : ''}
                         </div>
-                        
                         <div class="mix-recipe">
-                            <h4>Recipe & Pricing</h4>
-                            ${renderRecipeDetails(data.recipe)}
+                            <h4>Recipe Details</h4>
+                            <div class="recipe-content">
+                                ${recipe ? renderRecipeDetails(recipe) : '<p>Recipe details not available</p>'}
+                            </div>
                         </div>
-                        
-                        <div class="form-actions">
-                            ${data.mix.status === 'published' ? `<button type="button" class="button button-primary buy-mix" data-mix-id="${data.mix.id}">Buy This Mix</button>` : ''}
-                            <button type="button" class="button button-secondary cancel-modal">Close</button>
-                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="button button-primary buy-mix" data-mix-id="${mix.id}">
+                            Buy This Mix
+                        </button>
+                        <button type="button" class="button button-secondary close-modal">
+                            Close
+                        </button>
                     </div>
                 </div>
             </div>
@@ -870,18 +806,101 @@ if (!document.getElementById('herbal-mix-nonce')) {
         $('#view-mix-modal').remove();
         $('body').append(modalHtml);
         $('#view-mix-modal').show();
-        
-        // Focus on close button
-        setTimeout(() => {
-            $('#view-mix-modal .cancel-modal').focus();
-        }, 100);
     }
     
-    // === HELPER FUNCTIONS ===
+    // === UTILITY FUNCTIONS ===
     
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Set button loading state
+    function setButtonLoading($button, isLoading, loadingText = 'Loading...') {
+        if (isLoading) {
+            $button.data('original-text', $button.text());
+            $button.text(loadingText).prop('disabled', true);
+        } else {
+            const originalText = $button.data('original-text') || 'Button';
+            $button.text(originalText).prop('disabled', false);
+        }
+    }
+    
+    // Show notification
+    function showNotification(message, type = 'info') {
+        // Remove existing notifications
+        $('.herbal-notification').remove();
+        
+        const notificationClass = `herbal-notification herbal-notification-${type}`;
+        const notification = $(`<div class="${notificationClass}">${escapeHtml(message)}</div>`);
+        
+        // Add notification styles if not already present
+        if (!$('#herbal-notification-styles').length) {
+            $('head').append(`
+                <style id="herbal-notification-styles">
+                .herbal-notification {
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 15px 20px;
+                    border-radius: 6px;
+                    color: #fff;
+                    font-weight: 600;
+                    z-index: 10000;
+                    max-width: 300px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                }
+                .herbal-notification-success { background: #27ae60; }
+                .herbal-notification-error { background: #e74c3c; }
+                .herbal-notification-info { background: #3498db; }
+                .herbal-notification-warning { background: #f39c12; }
+                </style>
+            `);
+        }
+        
+        $('body').append(notification);
+        
+        // Show with animation
+        notification.fadeIn(300);
+        
+        // Auto hide after 5 seconds
+        setTimeout(() => {
+            notification.fadeOut(300, function() {
+                $(this).remove();
+            });
+        }, 5000);
+    }
+    
+    // Handle AJAX errors
+    function handleAjaxError(xhr, status, error, context = 'Action') {
+        console.error(`${context} AJAX Error:`, {
+            status: status,
+            error: error,
+            response: xhr.responseText
+        });
+        
+        let message = `${context} failed. `;
+        
+        if (xhr.status === 403) {
+            message += 'Permission denied.';
+        } else if (xhr.status === 404) {
+            message += 'Resource not found.';
+        } else if (xhr.status === 500) {
+            message += 'Server error.';
+        } else {
+            message += 'Please try again.';
+        }
+        
+        showNotification(message, 'error');
+    }
+    
+    // Render recipe details for view modal
     function renderRecipeDetails(recipe) {
         if (!recipe) {
-            return '<p class="no-recipe">Recipe details not available.</p>';
+            return '<p>Recipe details not available.</p>';
         }
         
         let html = '<div class="recipe-details">';
@@ -892,7 +911,7 @@ if (!document.getElementById('herbal-mix-nonce')) {
                 <div class="packaging-info">
                     <h5>Packaging</h5>
                     <p><strong>${escapeHtml(recipe.packaging.name)}</strong> (${recipe.packaging.capacity}g capacity)</p>
-                    <p>Price: ${herbalProfileData.currencySymbol}${recipe.packaging.price.toFixed(2)}</p>
+                    <p>Price: ${currencySymbol}${recipe.packaging.price.toFixed(2)}</p>
                 </div>
             `;
         }
@@ -905,7 +924,7 @@ if (!document.getElementById('herbal-mix-nonce')) {
                     <li class="ingredient-item">
                         <span class="ingredient-name">${escapeHtml(ingredient.name)}</span>
                         <span class="ingredient-weight">${ingredient.weight}g</span>
-                        <span class="ingredient-price">${herbalProfileData.currencySymbol}${ingredient.total_price.toFixed(2)}</span>
+                        <span class="ingredient-price">${currencySymbol}${ingredient.total_price.toFixed(2)}</span>
                     </li>
                 `;
             });
@@ -917,8 +936,8 @@ if (!document.getElementById('herbal-mix-nonce')) {
             html += `
                 <div class="recipe-totals">
                     <p><strong>Total Weight:</strong> ${recipe.total_weight}g</p>
-                    <p><strong>Total Price:</strong> ${herbalProfileData.currencySymbol}${recipe.total_price.toFixed(2)}</p>
-                    ${recipe.total_points ? `<p><strong>Points Price:</strong> ${recipe.total_points} points</p>` : ''}
+                    <p><strong>Total Price:</strong> ${currencySymbol}${recipe.total_price.toFixed(2)}</p>
+                    ${recipe.total_points ? `<p><strong>Total Points:</strong> ${Math.round(recipe.total_points)} pts</p>` : ''}
                 </div>
             `;
         }
@@ -927,420 +946,5 @@ if (!document.getElementById('herbal-mix-nonce')) {
         return html;
     }
     
-    function escapeHtml(text) {
-        if (!text) return '';
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
-    }
-    
-    function setButtonLoading($button, isLoading, loadingText) {
-        if (isLoading) {
-            $button.data('original-text', $button.text());
-            $button.prop('disabled', true).text(loadingText || herbalProfileData.strings.loading);
-            $button.addClass('loading');
-        } else {
-            $button.prop('disabled', false).text($button.data('original-text') || 'Submit');
-            $button.removeClass('loading');
-        }
-    }
-    
-    function resetForms() {
-        // Reset edit form
-        $('#edit-mix-form')[0]?.reset();
-        $('#edit-mix-id').val('');
-        
-        // Reset publish form
-        $('#publish-mix-form')[0]?.reset();
-        $('#publish-mix-id').val('');
-        $('#publish_mix_image').val('');
-        resetImagePreview('publish_mix_image');
-        
-        // Clear validation states
-        $('.error').removeClass('error');
-        $('.error-message').hide();
-        
-        // Reset buttons
-        $('#edit-update-button').prop('disabled', true);
-        $('#publish-button').prop('disabled', true);
-        
-        isFormSubmitting = false;
-        currentMixData = null;
-    }
-    
-    function resetImagePreview(fieldId) {
-        const $preview = $(`#${fieldId}_preview`);
-        const $removeBtn = $(`#${fieldId}_remove_btn`);
-        
-        if ($preview.length) {
-            $preview.css('background-image', '').removeClass('has-image');
-            $preview.find('.upload-prompt').show();
-        }
-        
-        if ($removeBtn.length) {
-            $removeBtn.hide();
-        }
-    }
-    
-    function showNotification(message, type = 'info') {
-        const className = type === 'error' ? 'error-message' : (type === 'success' ? 'success-message' : 'info-message');
-        const $notification = $(`<div class="${className} temporary-notification">${escapeHtml(message)}</div>`);
-        
-        // Position and style
-        $notification.css({
-            position: 'fixed',
-            top: '20px',
-            right: '20px',
-            zIndex: '999999',
-            padding: '15px 20px',
-            borderRadius: '6px',
-            maxWidth: '350px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-            backgroundColor: type === 'error' ? '#f8d7da' : (type === 'success' ? '#d4edda' : '#d1ecf1'),
-            color: type === 'error' ? '#721c24' : (type === 'success' ? '#155724' : '#0c5460'),
-            border: `1px solid ${type === 'error' ? '#f5c6cb' : (type === 'success' ? '#c3e6cb' : '#bee5eb')}`,
-            fontSize: '14px',
-            lineHeight: '1.4'
-        });
-        
-        $('body').append($notification);
-        
-        // Auto remove
-        setTimeout(() => {
-            $notification.fadeOut(300, function() {
-                $(this).remove();
-            });
-        }, type === 'error' ? 5000 : 3000);
-        
-        console.log(`Notification (${type}):`, message);
-    }
-    
-    function handleAjaxError(xhr, status, error, context) {
-        console.error(`AJAX Error in ${context}:`, {
-            status: status,
-            error: error,
-            response: xhr.responseText
-        });
-        
-        let errorMessage = herbalProfileData.strings.connectionError;
-        
-        // Try to parse server error
-        try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.data && typeof response.data === 'string') {
-                errorMessage = response.data;
-            } else if (response.message) {
-                errorMessage = response.message;
-            }
-        } catch (e) {
-            // Use default message
-        }
-        
-        showNotification(errorMessage, 'error');
-    }
-    
-    // === MEDIA HANDLER INTEGRATION ===
-    
-    // Listen for media handler events
-    $(document).on('herbal_upload_success', function(e, data) {
-        console.log('Media upload success event:', data);
-        
-        if (data.targetId === 'publish_mix_image') {
-            setTimeout(validatePublishForm, 100);
-            showNotification('Image uploaded successfully!', 'success');
-        }
-    });
-    
-    $(document).on('herbal_upload_error', function(e, data) {
-        console.error('Media upload error event:', data);
-        showNotification('Image upload failed. Please try again.', 'error');
-    });
-    
-    // === ACCESSIBILITY ENHANCEMENTS ===
-    
-    // Focus management for modals
-    $(document).on('show', '.modal-dialog', function() {
-        const $modal = $(this);
-        const $firstInput = $modal.find('input, textarea, select, button').filter(':visible').first();
-        
-        setTimeout(() => {
-            $firstInput.focus();
-        }, 100);
-    });
-    
-    // Trap focus within modals
-    $(document).on('keydown', '.modal-dialog', function(e) {
-        if (e.keyCode === 9) { // Tab key
-            const $modal = $(this);
-            const $focusableElements = $modal.find('input, textarea, select, button, a').filter(':visible');
-            const $firstElement = $focusableElements.first();
-            const $lastElement = $focusableElements.last();
-            
-            if (e.shiftKey) {
-                if (document.activeElement === $firstElement[0]) {
-                    e.preventDefault();
-                    $lastElement.focus();
-                }
-            } else {
-                if (document.activeElement === $lastElement[0]) {
-                    e.preventDefault();
-                    $firstElement.focus();
-                }
-            }
-        }
-    });
-    
-    // === INITIALIZATION AND CHECKS ===
-    
-    // Check for required elements
-    const elementsCheck = {
-        mixesTable: $('.mixes-table').length,
-        tabNavigation: $('.tab-navigation').length,
-        editButtons: $('.edit-mix').length,
-        publishButtons: $('.publish-mix').length,
-        deleteButtons: $('.delete-mix').length,
-        viewButtons: $('.view-mix').length
-    };
-    
-    console.log('Profile elements check:', elementsCheck);
-    
-    if (elementsCheck.mixesTable > 0) {
-        console.log('Mixes table found, profile functionality fully initialized');
-    }
-    
-    if (elementsCheck.tabNavigation > 0) {
-        console.log('Tab navigation found, tab functionality initialized');
-        
-        // Set initial active tab if none is set
-        if ($('.tab-navigation li.active').length === 0) {
-            $('.tab-navigation li:first').addClass('active');
-            $('.tab-pane:first').addClass('active');
-        }
-    }
-    
-    // Initialize media handler integration
-    if (typeof window.herbalMediaHandler !== 'undefined') {
-        console.log('HerbalMediaHandler integration initialized');
-        
-        // Enhanced callbacks
-        window.herbalMediaHandler.onUploadSuccess(function(data) {
-            console.log('Media upload success callback triggered:', data);
-            $(document).trigger('herbal_upload_success', data);
-        });
-        
-        window.herbalMediaHandler.onUploadError(function(data) {
-            console.log('Media upload error callback triggered:', data);
-            $(document).trigger('herbal_upload_error', data);
-        });
-        
-        // Initialize on page load
-        setTimeout(() => {
-            window.herbalMediaHandler.init();
-        }, 500);
-    } else {
-        console.warn('HerbalMediaHandler not found - image uploads may not work properly');
-        console.log('Available global objects:', Object.keys(window).filter(key => key.includes('herbal')));
-    }
-    
-    // === GLOBAL API FOR EXTERNAL ACCESS ===
-    
-    window.herbalProfile = {
-        // Form validation
-        validateEditForm: validateEditForm,
-        validatePublishForm: validatePublishForm,
-        
-        // Modal management
-        showViewModal: showViewModal,
-        resetForms: resetForms,
-        
-        // UI helpers
-        showNotification: showNotification,
-        setButtonLoading: setButtonLoading,
-        handleAjaxError: handleAjaxError,
-        
-        // Data management
-        getCurrentMixData: () => currentMixData,
-        refreshPage: () => location.reload(),
-        
-        // Utilities
-        escapeHtml: escapeHtml,
-        renderRecipeDetails: renderRecipeDetails
-    };
-    
-    // === EVENT SYSTEM ===
-    
-    // Custom events for better integration
-    const profileEvents = {
-        mixUpdated: 'herbal:mix:updated',
-        mixPublished: 'herbal:mix:published',
-        mixDeleted: 'herbal:mix:deleted',
-        favoriteRemoved: 'herbal:favorite:removed',
-        modalOpened: 'herbal:modal:opened',
-        modalClosed: 'herbal:modal:closed'
-    };
-    
-    // Trigger events for better integration with other scripts
-    $(document).on('click', '.edit-mix', function() {
-        $(document).trigger(profileEvents.modalOpened, { type: 'edit', mixId: $(this).data('mix-id') });
-    });
-    
-    $(document).on('click', '.publish-mix', function() {
-        $(document).trigger(profileEvents.modalOpened, { type: 'publish', mixId: $(this).data('mix-id') });
-    });
-    
-    $(document).on('click', '.view-mix', function() {
-        $(document).trigger(profileEvents.modalOpened, { type: 'view', mixId: $(this).data('mix-id') });
-    });
-    
-    $(document).on('click', '.modal-close, .cancel-modal', function() {
-        $(document).trigger(profileEvents.modalClosed, { modal: $(this).closest('.modal-dialog').attr('id') });
-    });
-    
-    // === PERFORMANCE OPTIMIZATIONS ===
-    
-    // Debounce validation functions
-    const debouncedValidateEdit = debounce(validateEditForm, 300);
-    const debouncedValidatePublish = debounce(validatePublishForm, 300);
-    
-    // Replace direct validation calls with debounced versions
-    $(document).off('input', '#edit-mix-name').on('input', '#edit-mix-name', debouncedValidateEdit);
-    $(document).off('input change', '#publish-mix-name, #publish-mix-description').on('input change', '#publish-mix-name, #publish-mix-description', debouncedValidatePublish);
-    
-    function debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
-    
-    // === DEBUG MODE ===
-    
-    if (window.location.search.includes('herbal_debug=1') || window.location.hash.includes('debug')) {
-        console.log('🐛 Herbal Profile Debug Mode Enabled');
-        
-        window.herbalProfileDebug = {
-            // Configuration
-            config: herbalProfileData,
-            currentMix: () => currentMixData,
-            isSubmitting: () => isFormSubmitting,
-            
-            // Element counts
-            elements: elementsCheck,
-            
-            // Test functions
-            testModal: function(type, mixId = 1) {
-                console.log(`Testing ${type} modal with mix ID ${mixId}`);
-                switch(type) {
-                    case 'edit':
-                        $('#edit-mix-modal').show();
-                        $('#edit-mix-id').val(mixId);
-                        $('#edit-mix-name').val('Test Mix Name');
-                        validateEditForm();
-                        break;
-                    case 'publish':
-                        $('#publish-mix-modal').show();
-                        $('#publish-mix-id').val(mixId);
-                        $('#publish-mix-name').val('Test Mix Name');
-                        $('#publish-mix-description').val('Test description');
-                        validatePublishForm();
-                        break;
-                    case 'view':
-                        showViewModal({
-                            mix: { id: mixId, name: 'Test Mix', description: 'Test description', status: 'published' },
-                            recipe: { total_weight: 100, total_price: 25.50, ingredients: [] }
-                        });
-                        break;
-                }
-            },
-            
-            testNotification: function(message = 'Test notification', type = 'info') {
-                showNotification(message, type);
-            },
-            
-            testAjax: function() {
-                console.log('Testing AJAX configuration...');
-                $.ajax({
-                    url: herbalProfileData.ajaxUrl,
-                    type: 'POST',
-                    data: { action: 'test' },
-                    success: (response) => console.log('AJAX test success:', response),
-                    error: (xhr, status, error) => console.log('AJAX test error:', status, error)
-                });
-            },
-            
-            // Validation tests
-            testValidation: function() {
-                console.log('Testing form validation...');
-                console.log('Edit form valid:', validateEditForm());
-                console.log('Publish form valid:', validatePublishForm());
-            },
-            
-            // Media handler test
-            testMediaHandler: function() {
-                if (window.herbalMediaHandler) {
-                    console.log('Media handler available:', typeof window.herbalMediaHandler);
-                    console.log('Media handler methods:', Object.keys(window.herbalMediaHandler));
-                } else {
-                    console.log('Media handler not available');
-                }
-            },
-            
-            // Event listeners count
-            getEventListeners: function() {
-                return {
-                    editButtons: $('.edit-mix').length,
-                    publishButtons: $('.publish-mix').length,
-                    deleteButtons: $('.delete-mix').length,
-                    viewButtons: $('.view-mix').length,
-                    modals: $('.modal-dialog').length
-                };
-            }
-        };
-        
-        console.log('🔧 Debug commands available:');
-        console.log('- herbalProfileDebug.testModal("edit"|"publish"|"view", mixId)');
-        console.log('- herbalProfileDebug.testNotification(message, type)');
-        console.log('- herbalProfileDebug.testAjax()');
-        console.log('- herbalProfileDebug.testValidation()');
-        console.log('- herbalProfileDebug.testMediaHandler()');
-        console.log('- herbalProfileDebug.getEventListeners()');
-        console.log('📊 Current state:', window.herbalProfileDebug.elements);
-    }
-    
-    // === FINAL INITIALIZATION ===
-    
-    // Run initial validation on any pre-filled forms
-    setTimeout(() => {
-        if ($('#edit-mix-name').val()) {
-            validateEditForm();
-        }
-        if ($('#publish-mix-name').val() || $('#publish-mix-description').val()) {
-            validatePublishForm();
-        }
-    }, 100);
-    
-    // Log successful initialization
-    console.log('✅ Profile.js initialization complete');
-    console.log('📊 Elements found:', elementsCheck);
-    console.log('🔧 Global API available as window.herbalProfile');
-    console.log('📝 Current configuration:', {
-        ajaxUrl: herbalProfileData.ajaxUrl,
-        userId: herbalProfileData.userId,
-        currency: herbalProfileData.currencySymbol,
-        noncesAvailable: Object.keys(herbalProfileData).filter(key => key.includes('Nonce')).length
-    });
-    
-    // Signal that profile is ready
-    $(document).trigger('herbal:profile:ready');
-    
+    console.log('Herbal Mix Profile JS initialization complete - ALL FEATURES LOADED');
 });
