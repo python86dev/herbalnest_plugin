@@ -1,0 +1,910 @@
+/**
+ * Herbal Product Template Styles
+ * File: assets/css/herbal-product-template.css
+ */
+
+/* Import Google Fonts (fallback) */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap');
+
+/* Reset and Base Styles */
+.herbal-product-container * {
+    box-sizing: border-box;
+}
+
+.herbal-product-container {
+    font-family: 'Inter', sans-serif;
+    background: #fafafa;
+    color: #2c3e50;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+.herbal-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+/* Breadcrumb */
+.herbal-breadcrumb {
+    padding: 20px 0;
+    font-size: 14px;
+    color: #7f8c8d;
+}
+
+.herbal-breadcrumb a {
+    color: #7f8c8d;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.herbal-breadcrumb a:hover {
+    color: #2c3e50;
+}
+
+/* Main Product Section */
+.herbal-product-main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    margin-bottom: 60px;
+    background: white;
+    padding: 60px;
+    border-radius: 8px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+}
+
+/* Gallery Section - Integrate with WooCommerce */
+.herbal-product-gallery {
+    position: relative;
+}
+
+.herbal-product-gallery .woocommerce-product-gallery {
+    margin-bottom: 0;
+}
+
+.herbal-product-gallery .woocommerce-product-gallery__image img {
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.herbal-product-gallery .flex-control-thumbs {
+    margin-top: 20px;
+}
+
+.herbal-product-gallery .flex-control-thumbs li {
+    margin-right: 12px;
+    margin-bottom: 12px;
+}
+
+.herbal-product-gallery .flex-control-thumbs img {
+    border: 2px solid transparent;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.herbal-product-gallery .flex-control-thumbs img:hover,
+.herbal-product-gallery .flex-control-thumbs .flex-active img {
+    border-color: #8b4513;
+    transform: translateY(-2px);
+}
+
+/* Product Details */
+.herbal-product-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.herbal-product-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.8rem;
+    font-weight: 500;
+    color: #2c3e50;
+    margin-bottom: 12px;
+    line-height: 1.2;
+}
+
+.herbal-product-subtitle {
+    font-size: 16px;
+    color: #7f8c8d;
+    margin-bottom: 30px;
+    font-weight: 300;
+}
+
+/* Meta Information */
+.herbal-product-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 30px;
+    padding: 20px 0;
+    border-top: 1px solid #ecf0f1;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.herbal-meta-item {
+    font-size: 14px;
+}
+
+.herbal-meta-label {
+    color: #7f8c8d;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.herbal-meta-value {
+    color: #2c3e50;
+    font-weight: 400;
+}
+
+/* Pricing Section */
+.herbal-pricing-section {
+    margin-bottom: 30px;
+}
+
+.herbal-main-price {
+    font-size: 2.2rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 15px;
+}
+
+.herbal-main-price .woocommerce-Price-amount {
+    font-weight: 600;
+}
+
+.herbal-points-container {
+    display: flex;
+    gap: 15px;
+}
+
+.herbal-points-item {
+    flex: 1;
+    padding: 16px 20px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 14px;
+    border: 1px solid #e9ecef;
+    transition: all 0.3s ease;
+}
+
+.herbal-points-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.herbal-points-alt {
+    background: #f8f9ff;
+    border-color: #e3f2fd;
+}
+
+.herbal-points-earn {
+    background: #f1f8e9;
+    border-color: #e8f5e9;
+}
+
+.herbal-points-value {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.herbal-points-alt .herbal-points-value {
+    color: #1976d2;
+}
+
+.herbal-points-earn .herbal-points-value {
+    color: #388e3c;
+}
+
+.herbal-points-label {
+    color: #7f8c8d;
+    font-size: 13px;
+}
+
+/* Add to Cart Section - Style WooCommerce elements */
+.herbal-cart-section {
+    margin-top: auto;
+    padding-top: 30px;
+}
+
+.herbal-cart-section .cart {
+    margin-bottom: 0;
+}
+
+.herbal-cart-section .quantity {
+    margin-right: 15px;
+}
+
+.herbal-cart-section .quantity .qty {
+    width: 80px;
+    height: 45px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.herbal-cart-section .single_add_to_cart_button {
+    background: #8b4513 !important;
+    color: white !important;
+    border: none !important;
+    padding: 15px 30px !important;
+    border-radius: 4px !important;
+    font-size: 16px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    min-height: 45px !important;
+}
+
+.herbal-cart-section .single_add_to_cart_button:hover {
+    background: #6d3410 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3) !important;
+}
+
+/* Created By Section */
+.herbal-created-by-section {
+    background: white;
+    padding: 40px 60px;
+    border-radius: 8px;
+    margin-bottom: 40px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+    text-align: center;
+}
+
+.herbal-created-by-title {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #7f8c8d;
+    margin-bottom: 12px;
+    font-weight: 500;
+}
+
+.herbal-creator-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem;
+    color: #8b4513;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.herbal-creator-title {
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+/* Description Section */
+.herbal-description-section {
+    background: white;
+    padding: 50px 60px;
+    border-radius: 8px;
+    margin-bottom: 40px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+}
+
+.herbal-description-header {
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.herbal-description-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.herbal-description-title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 2px;
+}
+
+.herbal-description-content {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #34495e;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.herbal-description-content p {
+    margin-bottom: 20px;
+}
+
+/* Mix Story Section */
+.herbal-story-section {
+    background: white;
+    padding: 50px 60px;
+    border-radius: 8px;
+    margin-bottom: 40px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+}
+
+.herbal-story-header {
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.herbal-story-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.herbal-story-title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 2px;
+}
+
+.herbal-story-subtitle {
+    color: #7f8c8d;
+    font-size: 15px;
+}
+
+.herbal-story-content {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #34495e;
+    text-align: justify;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.herbal-story-content p {
+    margin-bottom: 20px;
+}
+
+/* Ingredients Section */
+.herbal-ingredients-section {
+    background: white;
+    padding: 50px 60px;
+    border-radius: 8px;
+    margin-bottom: 40px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+}
+
+.herbal-ingredients-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.herbal-ingredients-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.herbal-ingredients-title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 2px;
+}
+
+.herbal-ingredients-subtitle {
+    color: #7f8c8d;
+    font-size: 15px;
+}
+
+.herbal-ingredients-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+    margin-bottom: 30px;
+}
+
+.herbal-ingredient-card {
+    background: #fafafa;
+    padding: 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid #f1f3f4;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.herbal-ingredient-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+    transition: left 0.5s ease;
+}
+
+.herbal-ingredient-card:hover::before {
+    left: 100%;
+}
+
+.herbal-ingredient-card:hover {
+    background: white;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    transform: translateY(-3px);
+    border-color: #8b4513;
+}
+
+.herbal-ingredient-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    color: white;
+    font-size: 20px;
+    transition: transform 0.3s ease;
+}
+
+.herbal-ingredient-card:hover .herbal-ingredient-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+
+.herbal-ingredient-name {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    font-size: 16px;
+}
+
+.herbal-ingredient-description {
+    color: #7f8c8d;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.herbal-ingredients-total {
+    text-align: center;
+    margin-top: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, #f1f8e9, #e8f5e9);
+    border-radius: 8px;
+    border: 1px solid #c8e6c9;
+}
+
+.herbal-total-weight {
+    color: #2e7d32;
+    font-size: 16px;
+}
+
+/* Packaging Section */
+.herbal-packaging-section {
+    background: white;
+    padding: 40px 60px;
+    border-radius: 8px;
+    margin-bottom: 40px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+}
+
+.herbal-packaging-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.herbal-packaging-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.herbal-packaging-title::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 2px;
+}
+
+.herbal-packaging-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 30px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.herbal-packaging-visual {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 28px;
+    flex-shrink: 0;
+}
+
+.herbal-packaging-details h4 {
+    color: #2c3e50;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.herbal-packaging-details p {
+    color: #7f8c8d;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+/* Reviews Section */
+.herbal-reviews-section {
+    background: white;
+    padding: 50px 60px;
+    border-radius: 8px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.04);
+}
+
+.herbal-reviews-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.herbal-reviews-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    color: #2c3e50;
+    margin-bottom: 15px;
+    position: relative;
+}
+
+.herbal-reviews-title::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80px;
+    height: 3px;
+    background: linear-gradient(135deg, #8b4513, #a0522d);
+    border-radius: 2px;
+}
+
+.herbal-rating-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.herbal-stars {
+    color: #ffc107;
+    font-size: 18px;
+}
+
+.herbal-rating-text {
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+.herbal-reviews-content {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Modal for Ingredient Details */
+.herbal-ingredient-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.herbal-ingredient-modal.active {
+    display: flex;
+    opacity: 1;
+}
+
+.herbal-modal-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 90%;
+    position: relative;
+    max-height: 85vh;
+    overflow-y: auto;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.herbal-ingredient-modal.active .herbal-modal-content {
+    transform: scale(1);
+}
+
+.herbal-modal-close {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #7f8c8d;
+    transition: color 0.2s ease;
+    z-index: 10;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.herbal-modal-close:hover {
+    color: #2c3e50;
+    background: rgba(0,0,0,0.05);
+}
+
+.herbal-modal-header {
+    padding: 30px 30px 20px;
+    text-align: center;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.herbal-modal-ingredient-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.herbal-modal-ingredient-image {
+    text-align: center;
+    padding: 20px 30px;
+    background: #f8f9fa;
+}
+
+.herbal-modal-ingredient-image img {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+.herbal-modal-body {
+    padding: 20px 30px 30px;
+}
+
+.herbal-modal-section {
+    margin-bottom: 25px;
+}
+
+.herbal-modal-section:last-child {
+    margin-bottom: 0;
+}
+
+.herbal-modal-section h4 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.2rem;
+    color: #2c3e50;
+    margin-bottom: 12px;
+    border-bottom: 2px solid #8b4513;
+    padding-bottom: 5px;
+    display: inline-block;
+}
+
+.herbal-modal-ingredient-details,
+.herbal-modal-ingredient-story {
+    font-size: 15px;
+    line-height: 1.7;
+    color: #34495e;
+}
+
+.herbal-modal-ingredient-story {
+    font-style: italic;
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    border-left: 4px solid #8b4513;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .herbal-container {
+        padding: 0 15px;
+    }
+
+    .herbal-product-main {
+        grid-template-columns: 1fr;
+        gap: 40px;
+        padding: 40px 30px;
+    }
+
+    .herbal-product-title {
+        font-size: 2.2rem;
+    }
+
+    .herbal-product-meta {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .herbal-points-container {
+        flex-direction: column;
+    }
+
+    .herbal-ingredients-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .herbal-ingredient-card {
+        padding: 20px;
+    }
+
+    .herbal-packaging-info {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .herbal-story-section,
+    .herbal-ingredients-section,
+    .herbal-packaging-section,
+    .herbal-reviews-section,
+    .herbal-description-section {
+        padding: 30px 20px;
+    }
+
+    .herbal-created-by-section {
+        padding: 30px 20px;
+    }
+
+    /* Modal responsive styles */
+    .herbal-modal-content {
+        width: 95%;
+        max-height: 90vh;
+        margin: 20px;
+    }
+
+    .herbal-modal-header {
+        padding: 20px 20px 15px;
+    }
+
+    .herbal-modal-ingredient-name {
+        font-size: 1.5rem;
+    }
+
+    .herbal-modal-body {
+        padding: 15px 20px 20px;
+    }
+
+    .herbal-modal-section h4 {
+        font-size: 1.1rem;
+    }
+
+    .herbal-modal-ingredient-image {
+        padding: 15px 20px;
+    }
+
+    .herbal-modal-close {
+        top: 10px;
+        right: 15px;
+        font-size: 24px;
+        width: 35px;
+        height: 35px;
+    }
+}
+
+@media (max-width: 480px) {
+    .herbal-product-title {
+        font-size: 1.8rem;
+    }
+
+    .herbal-main-price {
+        font-size: 1.8rem;
+    }
+
+    .herbal-ingredients-grid {
+        gap: 15px;
+    }
+
+    .herbal-ingredient-card {
+        padding: 16px;
+    }
+
+    .herbal-ingredient-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+    }
+
+    .herbal-ingredient-name {
+        font-size: 15px;
+    }
+
+    .herbal-ingredient-description {
+        font-size: 13px;
+    }
+
+    /* Modal mobile styles */
+    .herbal-modal-content {
+        width: 100%;
+        height: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+        margin: 0;
+    }
+
+    .herbal-modal-header {
+        padding: 15px 15px 10px;
+        padding-right: 50px;
+    }
+
+    .herbal-modal-ingredient-name {
+        font-size: 1.3rem;
+    }
+
+    .herbal-modal-body {
+        padding: 10px 15px 15px;
+    }
+
+    .herbal-modal-ingredient-image {
+        padding: 10px 15px;
+    }
+
+    .herbal-modal-close {
+        top: 5px;
+        right: 10px;
+        font-size: 22px;
+        width: 40px;
+        height: 40px;
+    }
+}
