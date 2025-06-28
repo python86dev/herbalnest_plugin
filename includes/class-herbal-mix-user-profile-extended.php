@@ -353,113 +353,525 @@ class HerbalMixUserProfileExtended {
     /**
      * AJAX: Publikowanie mieszanki używając szablonu "Custom User Mix" (ID: 57)
      */
-    public function ajax_publish_mix() {
-        if (!wp_verify_nonce($_POST['nonce'], 'herbal_mix_nonce')) {
-            wp_send_json_error('Security check failed.');
+    /**
+ * NAPRAWIONA FUNKCJA: ajax_publish_mix z poprawnym error handling
+ * Zastąp tę funkcję w includes/class-herbal-mix-user-profile-extended.php
+ */
+public function ajax_publish_mix() {
+    // Wzmocnione debugowanie
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('=== PUBLISH MIX DEBUG START ===');
+        error_log('POST data: ' . print_r($_POST, true));
+        error_log('User ID: ' . get_current_user_id());
+    }
+    
+    try {
+        // 1. Sprawdź nonce - obsłuż różne nazwy
+        $nonce_verified = false;
+        if (isset($_POST['nonce'])) {
+            if (wp_verify_nonce($_POST['nonce'], 'herbal_mix_nonce')) {
+                $nonce_verified = true;
+            } elseif (wp_verify_nonce($_POST['nonce'], 'herbal_mix_publish_nonce')) {
+                $nonce_verified = true;
+            }
         }
         
+        if (!$nonce_verified) {
+            wp_send_json_error('Security check failed. Please refresh the page.');
+            return;
+        }
+        
+        // 2. Sprawdź czy użytkownik jest zalogowany
         if (!is_user_logged_in()) {
-            wp_send_json_error('You must be logged in.');
+            wp_send_json_error('You must be logged in to publish mixes.');
+            return;
         }
         
-        $mix_id = intval($_POST['mix_id']);
+        // 3. Pobierz i zwaliduj dane
+        $mix_id = intval($_POST['mix_id'] ?? 0);
+        if ($mix_id <= 0) {
+            wp_send_json_error('Invalid mix ID provided.');
+            return;
+        }
+        
         $mix_name = isset($_POST['mix_name']) ? sanitize_text_field($_POST['mix_name']) : '';
         $mix_description = isset($_POST['mix_description']) ? sanitize_textarea_field($_POST['mix_description']) : '';
-        $mix_image = isset($_POST['mix_image']) ? sanitize_text_field($_POST['mix_image']) : '';
+        $mix_image = isset($_POST['mix_image']) ? esc_url_raw($_POST['mix_image']) : '';
         $user_id = get_current_user_id();
         
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Validated data - Mix ID: ' . $mix_id . ', Name: ' . $mix_name . ', User ID: ' . $user_id);
+        }
+        
+        // 4. Pobierz mieszankę z bazy danych
         global $wpdb;
         $table = $wpdb->prefix . 'herbal_mixes';
         
-        // Verify ownership and that mix exists
         $mix = $wpdb->get_row($wpdb->prepare("
             SELECT * FROM $table 
             WHERE id = %d AND user_id = %d
         ", $mix_id, $user_id));
         
         if (!$mix) {
-            wp_send_json_error('Mix not found or access denied.');
+            wp_send_json_error('Mix not found or you do not have permission to publish it.');
+            return;
         }
         
-        // Check if mix has required data for publishing
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Mix found: ' . $mix->mix_name . ', Status: ' . $mix->status);
+        }
+        
+        // 5. Sprawdź czy mieszanka już została opublikowana
+        if ($mix->status === 'published') {
+            wp_send_json_error('This mix has already been published.');
+            return;
+        }
+        
+        // 6. Walidacja wymaganych danych
         if (empty($mix->mix_name) && empty($mix_name)) {
             wp_send_json_error('Mix must have a name to be published.');
+            return;
         }
         
         if (empty($mix->mix_data)) {
             wp_send_json_error('Mix must have ingredients to be published.');
+            return;
         }
         
-        // Parse mix data and get recipe details for product creation
+        // 7. Parsuj dane mieszanki
         $mix_data = json_decode($mix->mix_data, true);
-        if (!$mix_data) {
-            wp_send_json_error('Invalid mix data.');
+        if (!$mix_data || !is_array($mix_data)) {
+            wp_send_json_error('Invalid mix data format. Please recreate your mix.');
+            return;
         }
         
-        $recipe_details = $this->build_recipe_details_fixed($mix_data);
-        if (!$recipe_details) {
-            wp_send_json_error('Unable to calculate mix pricing.');
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Mix data parsed successfully');
         }
         
-        // Use provided name/description or fallback to existing
+        // 8. NAJPIERW - zaktualizuj dane mieszanki w bazie danych
         $final_name = !empty($mix_name) ? $mix_name : $mix->mix_name;
         $final_description = !empty($mix_description) ? $mix_description : $mix->mix_description;
         $final_image = !empty($mix_image) ? $mix_image : $mix->mix_image;
         
-        // Create WooCommerce product using PUBLIC template (ID: 57)
-        $product_id = $this->create_product_from_template(
-            self::PUBLIC_TEMPLATE_ID,
-            $final_name,
-            $final_description,
-            $recipe_details,
-            $mix_data,
-            $final_image,
-            $user_id,
-            'public' // Type: public product
-        );
-        
-        if (is_wp_error($product_id)) {
-            wp_send_json_error('Failed to create product: ' . $product_id->get_error_message());
-        }
-        
-        // Update mix status and details
+        // Zaktualizuj bazę danych PRZED tworzeniem produktu
         $update_data = array(
-            'status' => 'published',
-            'product_id' => $product_id
+            'mix_name' => $final_name,
+            'mix_description' => $final_description,
+            'mix_image' => $final_image
         );
         
-        // Update name/description if provided
-        if (!empty($mix_name)) {
-            $update_data['mix_name'] = $final_name;
-        }
-        if (!empty($mix_description)) {
-            $update_data['mix_description'] = $final_description;
-        }
-        if (!empty($mix_image)) {
-            $update_data['mix_image'] = $final_image;
-        }
-        
-        $result = $wpdb->update(
+        $update_result = $wpdb->update(
             $table,
             $update_data,
             array('id' => $mix_id),
-            array('%s', '%d', '%s', '%s', '%s'),
+            array('%s', '%s', '%s'),
             array('%d')
         );
         
-        if ($result === false) {
-            // Delete created product if mix update failed
-            wp_delete_post($product_id, true);
-            wp_send_json_error('Failed to publish mix: ' . $wpdb->last_error);
+        if ($update_result === false) {
+            wp_send_json_error('Failed to update mix data: ' . $wpdb->last_error);
+            return;
         }
         
-        // Award points for publishing
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Mix data updated in database');
+        }
+        
+        // 9. Oblicz szczegóły receptury
+        $recipe_details = $this->calculate_recipe_for_publish($mix_data);
+        if (is_wp_error($recipe_details)) {
+            wp_send_json_error('Unable to calculate mix pricing: ' . $recipe_details->get_error_message());
+            return;
+        }
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Recipe calculated - Price: ' . $recipe_details['total_price'] . ', Points: ' . $recipe_details['total_price_points']);
+        }
+        
+        // 10. Sprawdź czy szablon istnieje
+        $template = get_post(self::PUBLIC_TEMPLATE_ID);
+        if (!$template || $template->post_type !== 'product') {
+            wp_send_json_error('Product template not found (ID: ' . self::PUBLIC_TEMPLATE_ID . '). Please contact administrator.');
+            return;
+        }
+        
+        // 11. Utwórz produkt WooCommerce
+        $product_id = $this->create_woocommerce_product_for_publish($mix, $recipe_details, $final_name, $final_description, $final_image, $user_id);
+        
+        if (is_wp_error($product_id)) {
+            wp_send_json_error('Failed to create WooCommerce product: ' . $product_id->get_error_message());
+            return;
+        }
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Product created with ID: ' . $product_id);
+        }
+        
+        // 12. Zaktualizuj status mieszanki na 'published'
+        $status_update = $wpdb->update(
+            $table,
+            array(
+                'status' => 'published',
+                'base_product_id' => $product_id
+            ),
+            array('id' => $mix_id),
+            array('%s', '%d'),
+            array('%d')
+        );
+        
+        if ($status_update === false) {
+            // Usuń produkt jeśli aktualizacja statusu nie powiodła się
+            wp_delete_post($product_id, true);
+            wp_send_json_error('Failed to update mix status: ' . $wpdb->last_error);
+            return;
+        }
+        
+        // 13. Przyznaj punkty za publikację
         if (class_exists('Herbal_Mix_Reward_Points')) {
             Herbal_Mix_Reward_Points::add_points($user_id, 50, 'mix_published', 'Published mix: ' . $final_name);
         }
         
-        wp_send_json_success('Mix published successfully! You earned 50 points.');
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('=== PUBLISH MIX SUCCESS ===');
+        }
+        
+        // 14. Zwróć sukces
+        wp_send_json_success([
+            'message' => 'Mix published successfully! You earned 50 points.',
+            'product_id' => $product_id,
+            'product_url' => get_permalink($product_id),
+            'points_earned' => 50
+        ]);
+        
+    } catch (Exception $e) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('PUBLISH MIX EXCEPTION: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+        }
+        wp_send_json_error('Unexpected error occurred: ' . $e->getMessage());
     }
+}
+
+/**
+ * NOWA FUNKCJA: Oblicz recepturę dla publikowania
+ */
+private function calculate_recipe_for_publish($mix_data) {
+    global $wpdb;
+    
+    try {
+        $recipe = [
+            'total_price' => 0,
+            'total_price_points' => 0,
+            'total_points_earned' => 0,
+            'total_weight' => 0,
+            'ingredients' => [],
+            'packaging' => null
+        ];
+        
+        // Sprawdź strukturę danych opakowania
+        $packaging_id = null;
+        if (isset($mix_data['packaging']['id'])) {
+            $packaging_id = intval($mix_data['packaging']['id']);
+        } elseif (isset($mix_data['packaging_id'])) {
+            $packaging_id = intval($mix_data['packaging_id']);
+        }
+        
+        // Pobierz dane opakowania
+        if ($packaging_id > 0) {
+            $packaging = $wpdb->get_row($wpdb->prepare("
+                SELECT id, name, herb_capacity, price, price_point, point_earned, image_url
+                FROM {$wpdb->prefix}herbal_packaging 
+                WHERE id = %d AND available = 1
+            ", $packaging_id));
+            
+            if ($packaging) {
+                $recipe['total_price'] += (float) $packaging->price;
+                $recipe['total_price_points'] += (float) $packaging->price_point;
+                $recipe['total_points_earned'] += (float) $packaging->point_earned;
+                $recipe['packaging'] = [
+                    'id' => $packaging->id,
+                    'name' => $packaging->name,
+                    'capacity' => $packaging->herb_capacity,
+                    'price' => $packaging->price,
+                    'image_url' => $packaging->image_url
+                ];
+            }
+        }
+        
+        // Pobierz dane składników
+        if (isset($mix_data['ingredients']) && is_array($mix_data['ingredients'])) {
+            foreach ($mix_data['ingredients'] as $ingredient_data) {
+                $ingredient_id = intval($ingredient_data['id'] ?? 0);
+                $weight = (float) ($ingredient_data['weight'] ?? 0);
+                
+                if ($ingredient_id > 0 && $weight > 0) {
+                    $ingredient = $wpdb->get_row($wpdb->prepare("
+                        SELECT id, name, price, price_point, point_earned, description, image_url
+                        FROM {$wpdb->prefix}herbal_ingredients 
+                        WHERE id = %d AND visible = 1
+                    ", $ingredient_id));
+                    
+                    if ($ingredient) {
+                        $ingredient_price = (float) $ingredient->price * $weight;
+                        $ingredient_points_price = (float) $ingredient->price_point * $weight;
+                        $ingredient_points_earned = (float) $ingredient->point_earned * $weight;
+                        
+                        $recipe['total_price'] += $ingredient_price;
+                        $recipe['total_price_points'] += $ingredient_points_price;
+                        $recipe['total_points_earned'] += $ingredient_points_earned;
+                        $recipe['total_weight'] += $weight;
+                        
+                        $recipe['ingredients'][] = [
+                            'id' => $ingredient->id,
+                            'name' => $ingredient->name,
+                            'weight' => $weight,
+                            'price' => $ingredient_price,
+                            'price_points' => $ingredient_points_price,
+                            'points_earned' => $ingredient_points_earned,
+                            'description' => $ingredient->description,
+                            'image_url' => $ingredient->image_url
+                        ];
+                    }
+                }
+            }
+        }
+        
+        // Zaokrąglij wszystkie ceny
+        $recipe['total_price'] = round($recipe['total_price'], 2);
+        $recipe['total_price_points'] = round($recipe['total_price_points'], 2);
+        $recipe['total_points_earned'] = round($recipe['total_points_earned'], 2);
+        
+        return $recipe;
+        
+    } catch (Exception $e) {
+        return new WP_Error('recipe_calculation_failed', 'Failed to calculate recipe: ' . $e->getMessage());
+    }
+}
+
+/**
+ * NOWA FUNKCJA: Utwórz produkt WooCommerce dla publikowania
+ */
+private function create_woocommerce_product_for_publish($mix, $recipe_details, $final_name, $final_description, $final_image, $user_id) {
+    try {
+        // Utwórz podstawowy produkt
+        $product_data = [
+            'post_title' => $final_name,
+            'post_content' => $this->generate_product_content_for_publish($final_description, $recipe_details, $user_id),
+            'post_excerpt' => wp_trim_words($final_description, 20, '...'),
+            'post_status' => 'publish',
+            'post_type' => 'product',
+            'post_author' => get_current_user_id()
+        ];
+        
+        $product_id = wp_insert_post($product_data);
+        
+        if (is_wp_error($product_id)) {
+            return $product_id;
+        }
+        
+        // Ustaw typ produktu WooCommerce
+        wp_set_object_terms($product_id, 'simple', 'product_type');
+        
+        // === USTAW WSZYSTKIE WYMAGANE METADANE ===
+        
+        // 1. Nazwa mieszanki
+        update_post_meta($product_id, 'mix_name', $final_name);
+        
+        // 2. Recepta mieszanki
+        update_post_meta($product_id, 'product_ingredients', wp_json_encode($recipe_details['ingredients']));
+        
+        // 3. Autor mieszanki
+        $author_data = $this->get_user_display_data($user_id);
+        update_post_meta($product_id, 'mix_creator_name', $author_data['name']);
+        
+        // 4. ID autora
+        update_post_meta($product_id, 'mix_creator_id', $user_id);
+        
+        // 5. Cena mieszanki
+        update_post_meta($product_id, '_price', $recipe_details['total_price']);
+        update_post_meta($product_id, '_regular_price', $recipe_details['total_price']);
+        
+        // 6. Cena w punktach (używaj prawidłowej nazwy kolumny)
+        update_post_meta($product_id, 'price_point', $recipe_details['total_price_points']);
+        
+        // 7. Zdobyte punkty za zakup (używaj prawidłowej nazwy kolumny)
+        update_post_meta($product_id, 'point_earned', $recipe_details['total_points_earned']);
+        
+        // 8. Opis mieszanki
+        update_post_meta($product_id, 'mix_description', $final_description);
+        
+        // 9. Recepta mieszanki (pełne dane)
+        update_post_meta($product_id, 'herbal_mix_data', $mix->mix_data);
+        
+        // 10. Opakowanie
+        if (!empty($recipe_details['packaging'])) {
+            update_post_meta($product_id, 'packaging_id', $recipe_details['packaging']['id']);
+            update_post_meta($product_id, 'packaging_name', $recipe_details['packaging']['name']);
+        }
+        
+        // === DODATKOWE METADANE ===
+        update_post_meta($product_id, 'herbal_mix_id', $mix->id);
+        update_post_meta($product_id, '_custom_mix_user', $user_id);
+        update_post_meta($product_id, '_custom_mix_author', $author_data['name']);
+        update_post_meta($product_id, '_custom_mix_created', current_time('mysql'));
+        update_post_meta($product_id, 'total_weight', $recipe_details['total_weight']);
+        
+        // === USTAWIENIA WOOCOMMERCE ===
+        update_post_meta($product_id, '_stock_status', 'instock');
+        update_post_meta($product_id, '_manage_stock', 'no');
+        update_post_meta($product_id, '_virtual', 'no');
+        update_post_meta($product_id, '_downloadable', 'no');
+        update_post_meta($product_id, '_sale_price', '');
+        
+        // 11. Zdjęcie mieszanki
+        if (!empty($final_image)) {
+            $this->set_product_featured_image($product_id, $final_image);
+        }
+        
+        // 12. Przypisanie kategorii "Custom Mix"
+        $this->assign_product_to_custom_mix_category($product_id);
+        
+        // Wyczyść cache WooCommerce
+        if (function_exists('wc_delete_product_transients')) {
+            wc_delete_product_transients($product_id);
+        }
+        
+        return $product_id;
+        
+    } catch (Exception $e) {
+        return new WP_Error('product_creation_failed', 'Failed to create product: ' . $e->getMessage());
+    }
+}
+
+/**
+ * FUNKCJA POMOCNICZA: Pobierz dane użytkownika
+ */
+private function get_user_display_data($user_id) {
+    $user = get_user_by('id', $user_id);
+    if (!$user) {
+        return ['name' => __('Unknown Author', 'herbal-mix-creator2'), 'id' => 0];
+    }
+    
+    $nickname = get_user_meta($user_id, 'nickname', true);
+    $display_name = !empty($nickname) ? $nickname : $user->display_name;
+    
+    return [
+        'name' => $display_name,
+        'id' => $user_id,
+        'email' => $user->user_email
+    ];
+}
+
+/**
+ * FUNKCJA POMOCNICZA: Generuj treść produktu
+ */
+private function generate_product_content_for_publish($description, $recipe_details, $user_id) {
+    $author_data = $this->get_user_display_data($user_id);
+    
+    $content = '<div class="custom-mix-product-content">';
+    
+    if (!empty($description)) {
+        $content .= '<div class="mix-description">' . wp_kses_post($description) . '</div>';
+    }
+    
+    $content .= '<div class="mix-details">';
+    $content .= '<h4>' . __('Mix Details', 'herbal-mix-creator2') . '</h4>';
+    $content .= '<ul>';
+    $content .= '<li><strong>' . __('Created by:', 'herbal-mix-creator2') . '</strong> ' . esc_html($author_data['name']) . '</li>';
+    $content .= '<li><strong>' . __('Total Weight:', 'herbal-mix-creator2') . '</strong> ' . $recipe_details['total_weight'] . 'g</li>';
+    $content .= '<li><strong>' . __('Number of Ingredients:', 'herbal-mix-creator2') . '</strong> ' . count($recipe_details['ingredients']) . '</li>';
+    
+    if (!empty($recipe_details['packaging']['name'])) {
+        $content .= '<li><strong>' . __('Packaging:', 'herbal-mix-creator2') . '</strong> ' . esc_html($recipe_details['packaging']['name']) . '</li>';
+    }
+    
+    $content .= '</ul>';
+    $content .= '</div>';
+    
+    $content .= '<div class="ingredients-list">';
+    $content .= '<h4>' . __('Ingredients', 'herbal-mix-creator2') . '</h4>';
+    $content .= '<ul>';
+    foreach ($recipe_details['ingredients'] as $ingredient) {
+        $content .= '<li>' . esc_html($ingredient['name']) . ' - ' . $ingredient['weight'] . 'g</li>';
+    }
+    $content .= '</ul>';
+    $content .= '</div>';
+    
+    $content .= '</div>';
+    
+    return $content;
+}
+
+/**
+ * FUNKCJA POMOCNICZA: Ustaw zdjęcie produktu
+ */
+private function set_product_featured_image($product_id, $image_url) {
+    // Sprawdź czy obraz już istnieje w bibliotece mediów
+    $attachment_id = attachment_url_to_postid($image_url);
+    
+    if ($attachment_id) {
+        set_post_thumbnail($product_id, $attachment_id);
+        return true;
+    }
+    
+    // Jeśli nie ma, spróbuj utworzyć nowy attachment
+    require_once(ABSPATH . 'wp-admin/includes/media.php');
+    require_once(ABSPATH . 'wp-admin/includes/file.php');
+    require_once(ABSPATH . 'wp-admin/includes/image.php');
+    
+    $tmp = download_url($image_url);
+    if (is_wp_error($tmp)) {
+        return false;
+    }
+    
+    $file_array = [
+        'name' => basename($image_url),
+        'tmp_name' => $tmp
+    ];
+    
+    $attachment_id = media_handle_sideload($file_array, $product_id);
+    
+    if (is_wp_error($attachment_id)) {
+        @unlink($tmp);
+        return false;
+    }
+    
+    set_post_thumbnail($product_id, $attachment_id);
+    return true;
+}
+
+/**
+ * FUNKCJA POMOCNICZA: Przypisz kategorię Custom Mix
+ */
+private function assign_product_to_custom_mix_category($product_id) {
+    // Sprawdź czy kategoria istnieje
+    $term = get_term_by('slug', 'custom-mix', 'product_cat');
+    
+    if (!$term) {
+        // Utwórz kategorię jeśli nie istnieje
+        $term_data = wp_insert_term(
+            'Custom Mix',
+            'product_cat',
+            [
+                'slug' => 'custom-mix',
+                'description' => __('User-created herbal mixes', 'herbal-mix-creator2')
+            ]
+        );
+        
+        if (!is_wp_error($term_data)) {
+            $term_id = $term_data['term_id'];
+        } else {
+            return false;
+        }
+    } else {
+        $term_id = $term->term_id;
+    }
+    
+    // Przypisz kategorię do produktu
+    wp_set_post_terms($product_id, [$term_id], 'product_cat');
+    return true;
+}
     
     /**
      * AJAX: Buy mix - tworzy prywatny produkt używając szablonu "Custom Herbal Mix" (ID: 96)
@@ -535,44 +947,49 @@ class HerbalMixUserProfileExtended {
     }
     
     /**
-     * NOWA FUNKCJA: Tworzy produkt WooCommerce z szablonu
-     */
-    private function create_product_from_template($template_id, $mix_name, $mix_description, $recipe_details, $mix_data, $mix_image = '', $author_id = 0, $type = 'public') {
-        // Sprawdź czy szablon istnieje
-        $template = get_post($template_id);
-        if (!$template || $template->post_type !== 'product') {
-            return new WP_Error('template_not_found', 'Product template not found (ID: ' . $template_id . ')');
-        }
-        
-        // Dla prywatnych produktów - sprawdź czy już istnieje dla tego użytkownika i mieszanki
-        if ($type === 'private') {
-            $existing_product = get_posts(array(
-                'post_type' => 'product',
-                'meta_query' => array(
-                    array(
-                        'key' => '_herbal_mix_id',
-                        'value' => intval($_POST['mix_id']),
-                        'compare' => '='
-                    ),
-                    array(
-                        'key' => '_herbal_mix_buyer_id',
-                        'value' => $author_id,
-                        'compare' => '='
-                    )
+ * NAPRAWIONA FUNKCJA: create_product_from_template dla publikowania mieszanek
+ * Ta funkcja zastępuje istniejącą w class-herbal-mix-user-profile-extended.php
+ * TYLKO dla przypadku publikowania (type = 'public', template ID 57)
+ */
+private function create_product_from_template($template_id, $mix_name, $mix_description, $recipe_details, $mix_data, $mix_image = '', $author_id = 0, $type = 'public') {
+    // Sprawdź czy szablon istnieje
+    $template = get_post($template_id);
+    if (!$template || $template->post_type !== 'product') {
+        return new WP_Error('template_not_found', 'Product template not found (ID: ' . $template_id . ')');
+    }
+    
+    // Dla prywatnych produktów - użyj istniejącą logikę (nie zmieniamy)
+    if ($type === 'private') {
+        $existing_product = get_posts(array(
+            'post_type' => 'product',
+            'meta_query' => array(
+                array(
+                    'key' => '_herbal_mix_id',
+                    'value' => intval($_POST['mix_id']),
+                    'compare' => '='
                 ),
-                'posts_per_page' => 1
-            ));
-            
-            if (!empty($existing_product)) {
-                return $existing_product[0]->ID;
-            }
-        }
+                array(
+                    'key' => '_herbal_mix_buyer_id',
+                    'value' => $author_id,
+                    'compare' => '='
+                )
+            ),
+            'posts_per_page' => 1
+        ));
         
-        // Utwórz nowy produkt bazując na szablonie
+        if (!empty($existing_product)) {
+            return $existing_product[0]->ID;
+        }
+    }
+    
+    // === NOWA LOGIKA DLA PUBLIKOWANIA (type = 'public') ===
+    if ($type === 'public') {
+        // Utwórz produkt bazując na szablonie ID 57
         $product_data = array(
             'post_title' => $mix_name,
-            'post_content' => $this->generate_product_description($mix_description, $recipe_details, $author_id, $type),
-            'post_status' => $type === 'private' ? 'private' : 'publish',
+            'post_content' => $this->generate_product_description_for_publish($mix_description, $recipe_details, $author_id),
+            'post_excerpt' => wp_trim_words($mix_description, 20, '...'),
+            'post_status' => 'publish',
             'post_type' => 'product',
             'post_author' => get_current_user_id()
         );
@@ -583,39 +1000,279 @@ class HerbalMixUserProfileExtended {
             return $product_id;
         }
         
-        // Skopiuj meta dane z szablonu
-        $this->copy_product_meta_from_template($template_id, $product_id);
+        // Skopiuj podstawowe meta dane z szablonu (ale nie mix-specific)
+        $this->copy_template_meta_for_publish($template_id, $product_id);
         
-        // Ustaw ceny bazując na recepturze
+        // Ustaw typ produktu WooCommerce
+        wp_set_object_terms($product_id, 'simple', 'product_type');
+        
+        // === PRZENIEŚ WSZYSTKIE WYMAGANE DANE Z MIESZANKI ===
+        
+        // 1. Nazwa mieszanki
+        update_post_meta($product_id, 'mix_name', $mix_name);
+        
+        // 2. Recepta mieszanki (jako JSON)
+        update_post_meta($product_id, 'product_ingredients', wp_json_encode($recipe_details['ingredients']));
+        
+        // 3. Autor mieszanki
+        $author_data = $this->get_author_info($author_id);
+        update_post_meta($product_id, 'mix_creator_name', $author_data['name']);
+        
+        // 4. ID autora
+        update_post_meta($product_id, 'mix_creator_id', $author_id);
+        
+        // 5. Cena mieszanki
         update_post_meta($product_id, '_price', $recipe_details['total_price']);
         update_post_meta($product_id, '_regular_price', $recipe_details['total_price']);
         
-        // Ustaw meta dane mieszanki
-        update_post_meta($product_id, '_herbal_mix_id', intval($_POST['mix_id']));
-        update_post_meta($product_id, '_herbal_mix_data', wp_json_encode($mix_data));
-        update_post_meta($product_id, '_herbal_mix_recipe', wp_json_encode($recipe_details));
-        update_post_meta($product_id, '_herbal_mix_author_id', $author_id);
-        update_post_meta($product_id, '_herbal_mix_type', $type);
+        // 6. Cena w punktach (użyj prawidłowej nazwy kolumny)
+        update_post_meta($product_id, 'price_point', $recipe_details['total_points']);
         
-        // Dla prywatnych produktów - ustaw nabywcę
-        if ($type === 'private') {
-            update_post_meta($product_id, '_herbal_mix_buyer_id', $author_id);
-        }
+        // 7. Zdobyte punkty za zakup (użyj prawidłowej nazwy kolumny)
+        update_post_meta($product_id, 'point_earned', $recipe_details['total_points'] * 0.1); // 10% punktów za zakup
         
-        // Ustaw obrazek produktu jeśli dostępny
+        // 8. Zdjęcie mieszanki
         if (!empty($mix_image)) {
-            $this->set_product_image_from_url($product_id, $mix_image);
+            $this->set_product_image_for_publish($product_id, $mix_image);
         }
         
-        // Ustaw kategorie produktu
-        if ($type === 'public') {
-            wp_set_object_terms($product_id, 'herbal-mixes', 'product_cat');
-        } else {
-            wp_set_object_terms($product_id, 'private-herbal-mixes', 'product_cat');
+        // 9. Opis mieszanki
+        update_post_meta($product_id, 'mix_description', $mix_description);
+        
+        // 10. Recepta mieszanki (pełne dane)
+        update_post_meta($product_id, 'herbal_mix_data', wp_json_encode($mix_data));
+        
+        // 11. Przypisanie kategorii "Custom Mix"
+        $this->assign_custom_mix_category_for_publish($product_id);
+        
+        // 12. Opakowanie
+        if (!empty($recipe_details['packaging']['id'])) {
+            update_post_meta($product_id, 'packaging_id', $recipe_details['packaging']['id']);
+            update_post_meta($product_id, 'packaging_name', $recipe_details['packaging']['name']);
+        }
+        
+        // === DODATKOWE METADANE ===
+        update_post_meta($product_id, 'herbal_mix_id', intval($_POST['mix_id']));
+        update_post_meta($product_id, '_custom_mix_user', $author_id);
+        update_post_meta($product_id, '_custom_mix_author', $author_data['name']);
+        update_post_meta($product_id, '_custom_mix_created', current_time('mysql'));
+        update_post_meta($product_id, 'total_weight', $recipe_details['total_weight']);
+        
+        // Ustaw stan magazynowy
+        update_post_meta($product_id, '_stock_status', 'instock');
+        update_post_meta($product_id, '_manage_stock', 'no');
+        update_post_meta($product_id, '_virtual', 'no');
+        update_post_meta($product_id, '_downloadable', 'no');
+        
+        // Wyczyść cache WooCommerce
+        if (function_exists('wc_delete_product_transients')) {
+            wc_delete_product_transients($product_id);
         }
         
         return $product_id;
     }
+    
+    // Istniejąca logika dla innych typów (bez zmian)
+    $product_data = array(
+        'post_title' => $mix_name,
+        'post_content' => $this->generate_product_description($mix_description, $recipe_details, $author_id, $type),
+        'post_status' => $type === 'private' ? 'private' : 'publish',
+        'post_type' => 'product',
+        'post_author' => get_current_user_id()
+    );
+    
+    $product_id = wp_insert_post($product_data);
+    
+    if (is_wp_error($product_id)) {
+        return $product_id;
+    }
+    
+    // Skopiuj meta dane z szablonu
+    $this->copy_product_meta_from_template($template_id, $product_id);
+    
+    // Ustaw ceny bazując na recepturze
+    update_post_meta($product_id, '_price', $recipe_details['total_price']);
+    update_post_meta($product_id, '_regular_price', $recipe_details['total_price']);
+    
+    // Ustaw meta dane mieszanki
+    update_post_meta($product_id, '_herbal_mix_id', intval($_POST['mix_id']));
+    update_post_meta($product_id, '_herbal_mix_data', wp_json_encode($mix_data));
+    update_post_meta($product_id, '_herbal_mix_recipe', wp_json_encode($recipe_details));
+    update_post_meta($product_id, '_herbal_mix_author_id', $author_id);
+    update_post_meta($product_id, '_herbal_mix_type', $type);
+    
+    // Dla prywatnych produktów - ustaw nabywcę
+    if ($type === 'private') {
+        update_post_meta($product_id, '_herbal_mix_buyer_id', $author_id);
+    }
+    
+    // Ustaw obrazek produktu jeśli dostępny
+    if (!empty($mix_image)) {
+        $this->set_product_image_from_url($product_id, $mix_image);
+    }
+    
+    // Ustaw kategorie produktu
+    if ($type === 'public') {
+        wp_set_object_terms($product_id, 'herbal-mixes', 'product_cat');
+    } else {
+        wp_set_object_terms($product_id, 'private-herbal-mixes', 'product_cat');
+    }
+    
+    return $product_id;
+}
+
+/**
+ * NOWE FUNKCJE POMOCNICZE dla publikowania
+ */
+
+/**
+ * Skopiuj meta dane z szablonu dla publikowania
+ */
+private function copy_template_meta_for_publish($template_id, $product_id) {
+    $template_meta = get_post_meta($template_id);
+    
+    // Metadane które NIE KOPIUJEMY (bo ustawiamy własne)
+    $excluded_meta = array(
+        '_edit_last', '_edit_lock', '_wp_old_slug', '_wp_old_date', '_thumbnail_id',
+        'mix_name', 'mix_description', 'mix_creator_name', 'mix_creator_id',
+        'price_point', 'point_earned', 'product_ingredients', 'herbal_mix_data',
+        'packaging_id', 'packaging_name', '_price', '_regular_price', '_sale_price',
+        '_herbal_mix_id', '_custom_mix_user', '_custom_mix_author'
+    );
+    
+    foreach ($template_meta as $key => $values) {
+        if (!in_array($key, $excluded_meta) && !empty($values[0])) {
+            update_post_meta($product_id, $key, $values[0]);
+        }
+    }
+}
+
+/**
+ * Generuj opis produktu dla publikowania
+ */
+private function generate_product_description_for_publish($mix_description, $recipe_details, $author_id) {
+    $author_data = $this->get_author_info($author_id);
+    
+    $description = '<div class="custom-mix-description">';
+    
+    if (!empty($mix_description)) {
+        $description .= '<div class="mix-story">' . wp_kses_post($mix_description) . '</div>';
+    }
+    
+    $description .= '<div class="mix-details">';
+    $description .= '<h4>' . __('Mix Details', 'herbal-mix-creator2') . '</h4>';
+    $description .= '<ul>';
+    $description .= '<li><strong>' . __('Created by:', 'herbal-mix-creator2') . '</strong> ' . esc_html($author_data['name']) . '</li>';
+    $description .= '<li><strong>' . __('Total Weight:', 'herbal-mix-creator2') . '</strong> ' . $recipe_details['total_weight'] . 'g</li>';
+    $description .= '<li><strong>' . __('Ingredients Count:', 'herbal-mix-creator2') . '</strong> ' . count($recipe_details['ingredients']) . '</li>';
+    
+    if (!empty($recipe_details['packaging']['name'])) {
+        $description .= '<li><strong>' . __('Packaging:', 'herbal-mix-creator2') . '</strong> ' . esc_html($recipe_details['packaging']['name']) . '</li>';
+    }
+    
+    $description .= '</ul>';
+    $description .= '</div>';
+    
+    $description .= '<div class="ingredients-list">';
+    $description .= '<h4>' . __('Ingredients', 'herbal-mix-creator2') . '</h4>';
+    $description .= '<ul>';
+    foreach ($recipe_details['ingredients'] as $ingredient) {
+        $description .= '<li>' . esc_html($ingredient['name']) . ' - ' . $ingredient['weight'] . 'g</li>';
+    }
+    $description .= '</ul>';
+    $description .= '</div>';
+    
+    return $description;
+}
+
+/**
+ * Pobierz informacje o autorze
+ */
+private function get_author_info($user_id) {
+    $user = get_user_by('id', $user_id);
+    if (!$user) {
+        return ['name' => __('Unknown Author', 'herbal-mix-creator2'), 'id' => 0];
+    }
+    
+    $nickname = get_user_meta($user_id, 'nickname', true);
+    $display_name = !empty($nickname) ? $nickname : $user->display_name;
+    
+    return [
+        'name' => $display_name,
+        'id' => $user_id,
+        'email' => $user->user_email
+    ];
+}
+
+/**
+ * Ustaw zdjęcie produktu dla publikowania
+ */
+private function set_product_image_for_publish($product_id, $image_url) {
+    // Sprawdź czy zdjęcie już istnieje w bibliotece mediów
+    $attachment_id = attachment_url_to_postid($image_url);
+    
+    if ($attachment_id) {
+        set_post_thumbnail($product_id, $attachment_id);
+        return $attachment_id;
+    }
+    
+    // Jeśli nie ma, stwórz nowe załączenie
+    require_once(ABSPATH . 'wp-admin/includes/media.php');
+    require_once(ABSPATH . 'wp-admin/includes/file.php');
+    require_once(ABSPATH . 'wp-admin/includes/image.php');
+    
+    $tmp = download_url($image_url);
+    if (is_wp_error($tmp)) {
+        return false;
+    }
+    
+    $file_array = [
+        'name' => basename($image_url),
+        'tmp_name' => $tmp
+    ];
+    
+    $attachment_id = media_handle_sideload($file_array, $product_id);
+    
+    if (is_wp_error($attachment_id)) {
+        @unlink($tmp);
+        return false;
+    }
+    
+    set_post_thumbnail($product_id, $attachment_id);
+    return $attachment_id;
+}
+
+/**
+ * Przypisz kategorię "Custom Mix" dla publikowania
+ */
+private function assign_custom_mix_category_for_publish($product_id) {
+    // Sprawdź czy kategoria "Custom Mix" istnieje
+    $term = get_term_by('slug', 'custom-mix', 'product_cat');
+    
+    if (!$term) {
+        // Stwórz kategorię jeśli nie istnieje
+        $term_data = wp_insert_term(
+            'Custom Mix',
+            'product_cat',
+            [
+                'slug' => 'custom-mix',
+                'description' => __('User-created herbal mixes', 'herbal-mix-creator2')
+            ]
+        );
+        
+        if (!is_wp_error($term_data)) {
+            $term_id = $term_data['term_id'];
+        } else {
+            return false;
+        }
+    } else {
+        $term_id = $term->term_id;
+    }
+    
+    // Przypisz kategorię do produktu
+    wp_set_post_terms($product_id, [$term_id], 'product_cat');
+    return true;
+}
     
     /**
      * Kopiuje meta dane z szablonu produktu

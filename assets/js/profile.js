@@ -76,51 +76,275 @@ jQuery(document).ready(function($) {
     
     // === PUBLISH MIX MODAL FUNCTIONALITY ===
     
-    // Handle Show Publish Modal button click
-    $(document).on('click', '.show-publish-modal', function(e) {
-        e.preventDefault();
-        
-        const $button = $(this);
-        const mixId = $button.data('mix-id');
-        
-        if (!mixId) {
-            showNotification('Invalid mix ID', 'error');
-            return;
-        }
-        
-        console.log('Opening publish modal for mix:', mixId);
-        
-        setButtonLoading($button, true);
-        
-        // Load mix details for publish
-        $.ajax({
-            url: ajaxUrl,
-            type: 'POST',
-            data: {
-                action: 'get_mix_details',
-                nonce: nonce,
-                mix_id: mixId
-            },
-            success: function(response) {
-                console.log('Publish mix details response:', response);
-                
-                if (response.success && response.data) {
-                    populatePublishForm(response.data);
-                    loadRecipeData(mixId, 'publish');
-                    $('#publish-mix-modal').show();
-                } else {
-                    showNotification('Error: ' + (response.data || 'Failed to load mix details'), 'error');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Publish modal error:', error, xhr.responseText);
-                handleAjaxError(xhr, status, error, 'Publish Modal');
-            },
-            complete: function() {
-                setButtonLoading($button, false);
-            }
-        });
+    // Handle publish form submission
+$(document).on('submit', '#publish-mix-form', function(e) {
+    e.preventDefault();
+    
+    console.log('=== PUBLISH FORM SUBMIT DEBUG ===');
+    
+    const mixName = $('#publish-mix-name').val().trim();
+    const mixDescription = $('#publish-mix-description').val().trim();
+    const mixImage = $('#publish-mix-image').val();
+    const mixId = $('#publish-mix-id').val();
+    const isConfirmed = $('#publish-confirm').is(':checked');
+    
+    console.log('Form data:', {
+        mixId: mixId,
+        mixName: mixName,
+        mixDescription: mixDescription,
+        mixImage: mixImage,
+        isConfirmed: isConfirmed
     });
+    
+    // Walidacja formularza
+    if (!mixName) {
+        showNotification('Please enter a mix name.', 'error');
+        console.log('Validation failed: no mix name');
+        return;
+    }
+    
+    if (!mixId) {
+        showNotification('Invalid mix ID.', 'error');
+        console.log('Validation failed: no mix ID');
+        return;
+    }
+    
+    if (!isConfirmed) {
+        showNotification('Please confirm that you understand the publishing terms.', 'error');
+        console.log('Validation failed: not confirmed');
+        return;
+    }
+    
+    const $button = $('#publish-button');
+    
+    // Przygotuj dane do wysłania
+    const formData = {
+        action: 'publish_mix',
+        nonce: nonce, // Używaj podstawowego nonce, nie publishNonce
+        mix_id: mixId,
+        mix_name: mixName,
+        mix_description: mixDescription,
+        mix_image: mixImage
+    };
+    
+    console.log('Sending AJAX data:', formData);
+    console.log('AJAX URL:', ajaxUrl);
+    
+    setButtonLoading($button, true, 'Publishing...');
+    
+    $.ajax({
+        url: ajaxUrl,
+        type: 'POST',
+        data: formData,
+        timeout: 30000, // 30 sekund timeout
+        success: function(response) {
+            console.log('=== PUBLISH SUCCESS RESPONSE ===');
+            console.log('Raw response:', response);
+            
+            if (response && response.success) {
+                showNotification(response.data.message || 'Mix published successfully! You earned 50 points.', 'success');
+                $('#publish-mix-modal').hide();
+                
+                // Update the UI - zmień przycisk Publish na View
+                const $row = $(`tr[data-mix-id="${mixId}"]`);
+                if ($row.length) {
+                    // Usuń przycisk Publish
+                    $row.find('.show-publish-modal').remove();
+                    
+                    // Zaktualizuj status
+                    $row.find('.status-badge')
+                        .removeClass('status-favorite status-draft')
+                        .addClass('status-published')
+                        .text('Published');
+                    
+                    // Usuń przycisk Edit i dodaj View
+                    $row.find('.edit-mix').remove();
+                    $row.find('.mix-actions').prepend(`
+                        <button type="button" class="button button-small view-mix" data-mix-id="${mixId}">
+                            View
+                        </button>
+                    `);
+                    
+                    console.log('UI updated for published mix');
+                }
+                
+                // Opcjonalnie: przekieruj do produktu
+                if (response.data.product_url) {
+                    setTimeout(() => {
+                        if (confirm('Would you like to view your published product?')) {
+                            window.open(response.data.product_url, '_blank');
+                        }
+                    }, 2000);
+                }
+                
+            } else {
+                const errorMessage = response.data || 'Failed to publish mix. Please try again.';
+                showNotification('Error: ' + errorMessage, 'error');
+                console.error('Publish failed:', errorMessage);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.log('=== PUBLISH AJAX ERROR ===');
+            console.log('Status:', status);
+            console.log('Error:', error);
+            console.log('Response Text:', xhr.responseText);
+            console.log('Status Code:', xhr.status);
+            
+            let errorMessage = 'Failed to publish mix.';
+            
+            // Lepsze error handling
+            if (xhr.status === 0) {
+                errorMessage = 'Network error. Please check your connection.';
+            } else if (xhr.status >= 500) {
+                errorMessage = 'Server error. Please try again later.';
+            } else if (xhr.status === 403) {
+                errorMessage = 'Permission denied. Please refresh the page and try again.';
+            } else if (xhr.responseText) {
+                // Sprawdź czy to jest HTML error page
+                if (xhr.responseText.includes('<html') || xhr.responseText.includes('<!DOCTYPE')) {
+                    errorMessage = 'Server returned an error page. Please check the browser console for details.';
+                    console.error('Server returned HTML instead of JSON:', xhr.responseText.substring(0, 500));
+                } else {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        if (response.data) {
+                            errorMessage = response.data;
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse error response:', e);
+                        errorMessage = 'Unexpected server response.';
+                    }
+                }
+            }
+            
+            showNotification('Publish error: ' + errorMessage, 'error');
+        },
+        complete: function() {
+            setButtonLoading($button, false);
+            console.log('=== PUBLISH REQUEST COMPLETE ===');
+        }
+    });
+});
+
+// DODAJ RÓWNIEŻ: Lepsze debugowanie dla ładowania modalu publikacji
+$(document).on('click', '.show-publish-modal', function(e) {
+    e.preventDefault();
+    
+    const $button = $(this);
+    const mixId = $button.data('mix-id');
+    
+    console.log('=== OPENING PUBLISH MODAL ===');
+    console.log('Mix ID:', mixId);
+    
+    if (!mixId) {
+        showNotification('Invalid mix ID', 'error');
+        return;
+    }
+    
+    setButtonLoading($button, true);
+    
+    // Load mix details for publish
+    $.ajax({
+        url: ajaxUrl,
+        type: 'POST',
+        data: {
+            action: 'get_mix_details',
+            nonce: nonce,
+            mix_id: mixId
+        },
+        success: function(response) {
+            console.log('Publish modal data response:', response);
+            
+            if (response.success && response.data) {
+                populatePublishForm(response.data);
+                loadRecipeData(mixId, 'publish');
+                $('#publish-mix-modal').show();
+            } else {
+                showNotification('Error: ' + (response.data || 'Failed to load mix details'), 'error');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Publish modal error:', error, xhr.responseText);
+            handleAjaxError(xhr, status, error, 'Open Publish Modal');
+        },
+        complete: function() {
+            setButtonLoading($button, false);
+        }
+    });
+});
+
+// NOWA FUNKCJA: Lepsze error handling
+function handleAjaxError(xhr, status, error, context) {
+    console.error(`=== ${context.toUpperCase()} ERROR ===`);
+    console.error('Status:', status);
+    console.error('Error:', error);
+    console.error('Response:', xhr.responseText);
+    
+    let message = `${context} failed.`;
+    
+    if (xhr.status === 0) {
+        message = 'Network connection error. Please check your internet connection.';
+    } else if (xhr.status === 403) {
+        message = 'Permission denied. Please refresh the page and try again.';
+    } else if (xhr.status >= 500) {
+        message = 'Server error. Please try again in a few moments.';
+    } else if (xhr.responseText && xhr.responseText.includes('Fatal error')) {
+        message = 'A server error occurred. Please contact the administrator.';
+        console.error('PHP Fatal Error detected in response');
+    }
+    
+    showNotification(message, 'error');
+}
+
+// POPRAWIONA funkcja: showNotification z lepszą widocznością
+function showNotification(message, type = 'info') {
+    console.log(`NOTIFICATION [${type.toUpperCase()}]: ${message}`);
+    
+    // Usuń poprzednie notyfikacje
+    $('.herbal-notification').remove();
+    
+    // Utwórz nową notyfikację
+    const $notification = $(`
+        <div class="herbal-notification herbal-notification-${type}" style="
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#007cba'};
+            color: white;
+            padding: 15px 20px;
+            border-radius: 5px;
+            z-index: 9999;
+            max-width: 400px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            font-weight: bold;
+        ">
+            ${message}
+            <button style="
+                background: none;
+                border: none;
+                color: white;
+                float: right;
+                margin-left: 10px;
+                cursor: pointer;
+                font-size: 18px;
+                line-height: 1;
+            ">&times;</button>
+        </div>
+    `);
+    
+    // Dodaj do body
+    $('body').append($notification);
+    
+    // Auto-hide po 5 sekundach
+    setTimeout(() => {
+        $notification.fadeOut(() => $notification.remove());
+    }, 5000);
+    
+    // Pozwól na ręczne zamknięcie
+    $notification.find('button').on('click', () => {
+        $notification.fadeOut(() => $notification.remove());
+    });
+}
     
     // === DELETE MIX FUNCTIONALITY ===
     
