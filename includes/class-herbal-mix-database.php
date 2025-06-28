@@ -471,7 +471,7 @@ dbDelta("
     /**
  * Save new mix (UPDATED - added mix_story parameter)
  */
-public static function save_mix($user_id, $mix_name, $mix_data, $mix_description = '', $mix_story = '', $status = 'favorite') {
+public static function save_mix($user_id, $mix_name, $mix_data, $mix_description = '', $mix_story = '', $mix_image = '', $status = 'favorite') {
     global $wpdb;
 
     if (!$user_id || !$mix_name || !$mix_data) {
@@ -489,7 +489,8 @@ public static function save_mix($user_id, $mix_name, $mix_data, $mix_description
             'mix_story' => sanitize_textarea_field($mix_story),
             'mix_data' => wp_json_encode($mix_data),
             'status' => sanitize_text_field($status),
-            'created_at' => current_time('mysql')
+            'created_at' => current_time('mysql'),
+            'mix_image' => esc_url_raw($mix_image),
         ),
         array('%d', '%s', '%s', '%s', '%s', '%s', '%s')
     );

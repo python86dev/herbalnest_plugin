@@ -1559,16 +1559,17 @@ private function assign_custom_mix_category_for_publish($product_id) {
             );
             
             wp_localize_script('herbal-profile-js', 'herbalProfileData', [
-                'ajaxUrl' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('herbal_mix_nonce'),
-                'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '£',
-                'strings' => [
-                    'loading' => __('Loading...', 'herbal-mix-creator2'),
-                    'error' => __('An error occurred.', 'herbal-mix-creator2'),
-                    'success' => __('Success!', 'herbal-mix-creator2'),
-                    'confirmDelete' => __('Are you sure you want to delete this mix?', 'herbal-mix-creator2')
-                ]
-            ]);
+    'ajaxUrl' => admin_url('admin-ajax.php'),
+    'nonce' => wp_create_nonce('herbal_mix_nonce'),
+    'uploadImageNonce' => wp_create_nonce('upload_image_nonce'), // DODAJ TĘ LINIĘ
+    'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '£',
+    'strings' => [
+        'loading' => __('Loading...', 'herbal-mix-creator2'),
+        'error' => __('An error occurred.', 'herbal-mix-creator2'),
+        'success' => __('Success!', 'herbal-mix-creator2'),
+        'confirmDelete' => __('Are you sure you want to delete this mix?', 'herbal-mix-creator2')
+    ]
+]);
         }
     }
     

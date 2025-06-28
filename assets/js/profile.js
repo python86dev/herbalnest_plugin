@@ -749,20 +749,28 @@ function showNotification(message, type = 'info') {
     }
     
     // === FORM VALIDATION ===
-    
-    // Enable/disable update button based on name input
-    $(document).on('input', '#edit-mix-name', function() {
-        const hasValue = $(this).val().trim() !== '';
-        $('#edit-update-button').prop('disabled', !hasValue);
-    });
-    
-    // Enable/disable publish button based on inputs
-    $(document).on('input change', '#publish-mix-name, #publish-confirm', function() {
-        const hasName = $('#publish-mix-name').val().trim() !== '';
-        const isConfirmed = $('#publish-confirm').is(':checked');
-        $('#publish-button').prop('disabled', !(hasName && isConfirmed));
-    });
-    
+
+// Enable/disable update button based on name input (POPRAWIONE)
+$(document).on('input', '#edit-mix-name', function() {
+    validateEditForm();
+});
+
+// Enable/disable publish button based on inputs (POPRAWIONE)
+$(document).on('input change', '#publish-mix-name, #publish-confirm', function() {
+    validatePublishForm();
+});
+
+// DODAJ: Walidacja po zmianie pola image (ukrytego)
+$(document).on('change', '#edit-mix-image', function() {
+    validateEditForm();
+});
+
+$(document).on('change', '#publish-mix-image', function() {
+    validatePublishForm();
+});
+
+
+
     // === FORM SUBMISSION ===
     
     // Handle edit form submission
@@ -877,63 +885,210 @@ function showNotification(message, type = 'info') {
         });
     });
     
-    // === IMAGE UPLOAD FUNCTIONALITY ===
+  // === IMAGE UPLOAD FUNCTIONALITY ===
+
+// Handle image upload for Edit
+$(document).on('change', '#edit-mix-image-input', function() {
+    const file = this.files[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            showNotification('Image file is too large. Please choose a file smaller than 5MB.', 'error');
+            this.value = '';
+            return;
+        }
+        
+        // Show preview immediately
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            $('#edit-mix-image-preview').attr('src', e.target.result).show();
+            $('#edit-mix-image-remove').show();
+        };
+        reader.readAsDataURL(file);
+        
+        // NOWE: Upload file via AJAX
+        uploadImageFile(file, 'edit');
+    }
+});
+
+// Handle image upload for Publish
+$(document).on('change', '#publish-mix-image-input', function() {
+    const file = this.files[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            showNotification('Image file is too large. Please choose a file smaller than 5MB.', 'error');
+            this.value = '';
+            return;
+        }
+        
+        // Show preview immediately
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            $('#publish-mix-image-preview').attr('src', e.target.result).show();
+            $('#publish-mix-image-remove').show();
+        };
+        reader.readAsDataURL(file);
+        
+        // NOWE: Upload file via AJAX
+        uploadImageFile(file, 'publish');
+    }
+});
+
+// NOWA FUNKCJA: Upload image file via AJAX z blokadą przycisków
+function uploadImageFile(file, modalType) {
+    console.log(`Starting upload for ${modalType} modal:`, file.name);
     
-    // Handle image upload for Edit
-    $(document).on('change', '#edit-mix-image-input', function() {
-        const file = this.files[0];
-        if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                showNotification('Image file is too large. Please choose a file smaller than 5MB.', 'error');
-                this.value = '';
-                return;
-            }
+    // NOWE: Zablokuj przyciski podczas uploadu
+    lockButtonsDuringUpload(modalType, true);
+    
+    // Prepare form data
+    const formData = new FormData();
+    formData.append('action', 'upload_mix_image');
+    formData.append('nonce', herbalProfileData.uploadImageNonce || nonce);
+    formData.append('mix_image', file);
+    
+    // Show uploading state
+    const $hiddenInput = $(`#${modalType}-mix-image`);
+    $hiddenInput.val('uploading...');
+    
+    // AJAX upload
+    $.ajax({
+        url: ajaxUrl,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            console.log(`Upload response for ${modalType}:`, response);
             
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                $('#edit-mix-image-preview').attr('src', e.target.result).show();
-                $('#edit-mix-image-remove').show();
-                $('#edit-mix-image').val('uploaded'); // Temporary value
-            };
-            reader.readAsDataURL(file);
+            if (response.success && response.data && response.data.url) {
+                // Set the real URL
+                $hiddenInput.val(response.data.url);
+                
+                // Update preview with final URL
+                $(`#${modalType}-mix-image-preview`).attr('src', response.data.url);
+                
+                showNotification('Image uploaded successfully!', 'success');
+                console.log(`Image uploaded successfully for ${modalType}:`, response.data.url);
+                
+            } else {
+                const errorMsg = response.data || 'Failed to upload image.';
+                console.error(`Upload failed for ${modalType}:`, errorMsg);
+                
+                // Reset on failure
+                $hiddenInput.val('');
+                $(`#${modalType}-mix-image-preview`).hide();
+                $(`#${modalType}-mix-image-remove`).hide();
+                
+                showNotification('Error: ' + errorMsg, 'error');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error(`Upload AJAX error for ${modalType}:`, {xhr, status, error});
+            
+            // Reset on error
+            $hiddenInput.val('');
+            $(`#${modalType}-mix-image-preview`).hide();
+            $(`#${modalType}-mix-image-remove`).hide();
+            
+            showNotification('Connection error. Please try again.', 'error');
+        },
+        complete: function() {
+            // NOWE: Odblokuj przyciski po zakończeniu (sukces lub błąd)
+            lockButtonsDuringUpload(modalType, false);
         }
     });
-    
-    // Handle image upload for Publish
-    $(document).on('change', '#publish-mix-image-input', function() {
-        const file = this.files[0];
-        if (file) {
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                showNotification('Image file is too large. Please choose a file smaller than 5MB.', 'error');
-                this.value = '';
-                return;
-            }
+}
+
+// NOWA FUNKCJA: Zarządzanie blokadą przycisków podczas uploadu
+function lockButtonsDuringUpload(modalType, isUploading) {
+    if (modalType === 'edit') {
+        const $updateButton = $('#edit-update-button');
+        const $fileInput = $('#edit-mix-image-input');
+        
+        if (isUploading) {
+            // Zablokuj podczas uploadu
+            $updateButton.prop('disabled', true);
+            $fileInput.prop('disabled', true);
             
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                $('#publish-mix-image-preview').attr('src', e.target.result).show();
-                $('#publish-mix-image-remove').show();
-                $('#publish-mix-image').val('uploaded'); // Temporary value
-            };
-            reader.readAsDataURL(file);
+            // Pokaż status uploadu na przycisku
+            $updateButton.data('original-text', $updateButton.text());
+            $updateButton.html('<span style="opacity: 0.7;">📤 Uploading image...</span>');
+            
+        } else {
+            // Odblokuj po zakończeniu
+            $fileInput.prop('disabled', false);
+            
+            // Przywróć oryginalny tekst
+            const originalText = $updateButton.data('original-text') || 'Update Mix';
+            $updateButton.text(originalText);
+            
+            // Sprawdź czy formularz jest kompletny przed odblokowaniem
+            validateEditForm();
         }
-    });
+        
+    } else if (modalType === 'publish') {
+        const $publishButton = $('#publish-button');
+        const $fileInput = $('#publish-mix-image-input');
+        const $confirmCheckbox = $('#publish-confirm');
+        
+        if (isUploading) {
+            // Zablokuj podczas uploadu
+            $publishButton.prop('disabled', true);
+            $fileInput.prop('disabled', true);
+            $confirmCheckbox.prop('disabled', true);
+            
+            // Pokaż status uploadu na przycisku
+            $publishButton.data('original-text', $publishButton.text());
+            $publishButton.html('<span style="opacity: 0.7;">📤 Uploading image...</span>');
+            
+        } else {
+            // Odblokuj po zakończeniu
+            $fileInput.prop('disabled', false);
+            $confirmCheckbox.prop('disabled', false);
+            
+            // Przywróć oryginalny tekst
+            const originalText = $publishButton.data('original-text') || '🚀 Publish Mix to Community';
+            $publishButton.text(originalText);
+            
+            // Sprawdź czy formularz jest kompletny przed odblokowaniem
+            validatePublishForm();
+        }
+    }
+}
+
+// NOWA FUNKCJA: Walidacja formularza Edit
+function validateEditForm() {
+    const hasName = $('#edit-mix-name').val().trim() !== '';
+    const isUploading = $('#edit-mix-image').val() === 'uploading...';
     
-    // Remove image for Edit
-    $(document).on('click', '#edit-mix-image-remove', function() {
-        $('#edit-mix-image').val('');
-        $('#edit-mix-image-input').val('');
-        $('#edit-mix-image-preview').hide();
-        $(this).hide();
-    });
+    $('#edit-update-button').prop('disabled', !hasName || isUploading);
+}
+
+// NOWA FUNKCJA: Walidacja formularza Publish
+function validatePublishForm() {
+    const hasName = $('#publish-mix-name').val().trim() !== '';
+    const isConfirmed = $('#publish-confirm').is(':checked');
+    const isUploading = $('#publish-mix-image').val() === 'uploading...';
     
-    // Remove image for Publish
-    $(document).on('click', '#publish-mix-image-remove', function() {
-        $('#publish-mix-image').val('');
-        $('#publish-mix-image-input').val('');
-        $('#publish-mix-image-preview').hide();
-        $(this).hide();
-    });
+    $('#publish-button').prop('disabled', !(hasName && isConfirmed) || isUploading);
+}
+
+
+// Remove image for Edit (unchanged)
+$(document).on('click', '#edit-mix-image-remove', function() {
+    $('#edit-mix-image').val('');
+    $('#edit-mix-image-input').val('');
+    $('#edit-mix-image-preview').hide();
+    $(this).hide();
+});
+
+// Remove image for Publish (unchanged)
+$(document).on('click', '#publish-mix-image-remove', function() {
+    $('#publish-mix-image').val('');
+    $('#publish-mix-image-input').val('');
+    $('#publish-mix-image-preview').hide();
+    $(this).hide();
+});
     
     // === MODAL FUNCTIONALITY ===
     
