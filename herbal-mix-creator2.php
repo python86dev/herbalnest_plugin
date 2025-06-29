@@ -536,3 +536,87 @@ function herbal_flush_rewrite_rules_maybe() {
         delete_option('herbal_flush_rewrite_rules_flag');
     }
 }
+
+// Sprawdź czy plik istnieje i może być załadowany
+add_action('init', function() {
+    if (current_user_can('manage_options') && isset($_GET['debug_file_loading'])) {
+        echo '<div style="background: white; padding: 20px; border: 2px solid #000; margin: 20px;">';
+        echo '<h2>🔍 FILE LOADING DEBUG</h2>';
+        
+        $gateway_file = HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-points-gateway.php';
+        
+        echo '<p><strong>Gateway file path:</strong> ' . $gateway_file . '</p>';
+        echo '<p><strong>File exists:</strong> ' . (file_exists($gateway_file) ? '✅ YES' : '❌ NO') . '</p>';
+        echo '<p><strong>File readable:</strong> ' . (is_readable($gateway_file) ? '✅ YES' : '❌ NO') . '</p>';
+        echo '<p><strong>File size:</strong> ' . (file_exists($gateway_file) ? filesize($gateway_file) . ' bytes' : 'N/A') . '</p>';
+        
+        if (file_exists($gateway_file)) {
+            echo '<h3>Trying to include file...</h3>';
+            
+            // Spróbuj załadować plik i złap błędy
+            ob_start();
+            $error_occurred = false;
+            
+            try {
+                include_once $gateway_file;
+                echo '<p>✅ File included successfully</p>';
+            } catch (Exception $e) {
+                echo '<p>❌ Exception: ' . $e->getMessage() . '</p>';
+                $error_occurred = true;
+            } catch (Error $e) {
+                echo '<p>❌ Error: ' . $e->getMessage() . '</p>';
+                $error_occurred = true;
+            }
+            
+            $output = ob_get_clean();
+            if ($output) {
+                echo '<h3>Output/Errors:</h3>';
+                echo '<pre>' . htmlentities($output) . '</pre>';
+                $error_occurred = true;
+            }
+            
+            if (!$error_occurred) {
+                echo '<p><strong>Function exists after include:</strong> ' . (function_exists('herbal_init_points_payment_gateway') ? '✅ YES' : '❌ NO') . '</p>';
+                echo '<p><strong>Class exists after include:</strong> ' . (class_exists('WC_Gateway_Points_Payment') ? '✅ YES' : '❌ NO') . '</p>';
+                
+                if (function_exists('herbal_init_points_payment_gateway')) {
+                    echo '<h3>Trying to call initialization function...</h3>';
+                    
+                    try {
+                        $result = herbal_init_points_payment_gateway();
+                        echo '<p>✅ Function called successfully. Result: ' . ($result ? 'TRUE' : 'FALSE') . '</p>';
+                        echo '<p><strong>Class exists after init:</strong> ' . (class_exists('WC_Gateway_Points_Payment') ? '✅ YES' : '❌ NO') . '</p>';
+                    } catch (Exception $e) {
+                        echo '<p>❌ Exception during init: ' . $e->getMessage() . '</p>';
+                    }
+                }
+            }
+        }
+        
+        echo '</div>';
+        exit;
+    }
+});
+
+// Dodaj sprawdzenie podczas ładowania hooka woocommerce_loaded
+add_action('woocommerce_loaded', function() {
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('=== HERBAL DEBUG: woocommerce_loaded hook triggered ===');
+        
+        $gateway_file = HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-points-gateway.php';
+        error_log('Gateway file exists: ' . (file_exists($gateway_file) ? 'YES' : 'NO'));
+        
+        if (file_exists($gateway_file)) {
+            error_log('Attempting to require gateway file...');
+            require_once $gateway_file;
+            error_log('Function exists after require: ' . (function_exists('herbal_init_points_payment_gateway') ? 'YES' : 'NO'));
+            
+            if (function_exists('herbal_init_points_payment_gateway')) {
+                error_log('Calling herbal_init_points_payment_gateway()...');
+                $result = herbal_init_points_payment_gateway();
+                error_log('Init function result: ' . ($result ? 'TRUE' : 'FALSE'));
+                error_log('Class exists after init: ' . (class_exists('WC_Gateway_Points_Payment') ? 'YES' : 'NO'));
+            }
+        }
+    }
+}, 5); // Priorytet 5 żeby było wcześnie
