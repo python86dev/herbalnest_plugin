@@ -7,10 +7,10 @@
  * Text Domain: herbal-mix-creator2
  * Domain Path: /languages
  * 
- * FIXED VERSION 1.3: Clean points system without duplicates
- * - Removed duplicate points classes
+ * FINAL FIXED VERSION 1.3: Proper gateway timing
+ * - Fixed payment gateway registration timing
+ * - Gateway always available for testing
  * - Single ingredient-based points system
- * - Fixed payment gateway integration
  * - Clean code structure without conflicts
  * - English frontend for UK market
  */
@@ -34,6 +34,60 @@ require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-product-meta.ph
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-actions.php';
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-admin-panel.php';
 require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-creator.php';
+
+// === FIXED: PAYMENT GATEWAY REGISTRATION WITH CORRECT TIMING ===
+add_action('woocommerce_init', 'herbal_register_points_gateway_correct_timing');
+
+function herbal_register_points_gateway_correct_timing() {
+    // Prevent double loading
+    if (class_exists('WC_Gateway_Points_Payment')) {
+        return; // Gateway already loaded
+    }
+    
+    // Load gateway file
+    if (file_exists(HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-points-gateway.php')) {
+        require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-points-gateway.php';
+        
+        // Initialize gateway
+        if (function_exists('herbal_init_points_payment_gateway')) {
+            herbal_init_points_payment_gateway();
+            
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('Herbal Plugin: Payment gateway loaded on woocommerce_init (CORRECT TIMING)');
+            }
+        }
+    }
+}
+
+// === FORCE GATEWAY REGISTRATION IN PAYMENT METHODS LIST ===
+add_filter('woocommerce_payment_gateways', 'herbal_force_add_points_gateway', 99);
+
+function herbal_force_add_points_gateway($methods) {
+    // Check if gateway is already in the list
+    if (!in_array('WC_Gateway_Points_Payment', $methods)) {
+        $methods[] = 'WC_Gateway_Points_Payment';
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Herbal: FORCED points gateway into payment methods list');
+        }
+    }
+    
+    return $methods;
+}
+
+// === ALTERNATIVE REGISTRATION IF ABOVE DOESN'T WORK ===
+add_action('woocommerce_payment_gateways_initialized', 'herbal_ensure_points_gateway_registered');
+
+function herbal_ensure_points_gateway_registered($payment_gateways) {
+    if (class_exists('WC_Gateway_Points_Payment')) {
+        $gateway = new WC_Gateway_Points_Payment();
+        $payment_gateways->gateways['points_payment'] = $gateway;
+        
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Herbal: Manually registered points gateway in gateways array');
+        }
+    }
+}
 
 // === INITIALIZE PLUGIN ===
 add_action('plugins_loaded', 'herbal_mix_creator_init');
@@ -85,8 +139,7 @@ function herbal_mix_creator_init() {
 }
 
 /**
- * FIXED: Load points system after WooCommerce is ready
- * Single unified points system without duplicates
+ * FIXED: Load points system (payment gateway loaded separately with correct timing)
  */
 function herbal_load_points_system() {
     require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-profile-integration.php';
@@ -107,21 +160,74 @@ function herbal_load_points_system() {
         new HerbalMixUserProfileExtended();
     }
     
-    // FIXED: Initialize payment gateway properly
-    add_action('woocommerce_loaded', function() {
-        if (file_exists(HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-points-gateway.php')) {
-            require_once HERBAL_MIX_PLUGIN_PATH . 'includes/class-herbal-mix-points-gateway.php';
-            
-            // Initialize the gateway
-            if (function_exists('herbal_init_points_payment_gateway')) {
-                $gateway_init = herbal_init_points_payment_gateway();
-                
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('Herbal Plugin: Points payment gateway initialization: ' . ($gateway_init ? 'SUCCESS' : 'FAILED'));
-                }
-            }
-        }
-    });
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Herbal Plugin: Points system components loaded successfully');
+    }
+}
+
+// === POINTS DISPLAY IN CART/CHECKOUT TOTALS (NEW FEATURE) ===
+add_action('woocommerce_cart_totals_after_order_total', 'herbal_display_points_in_cart_totals');
+add_action('woocommerce_review_order_after_order_total', 'herbal_display_points_in_checkout_totals');
+
+function herbal_display_points_in_cart_totals() {
+    herbal_display_points_totals_row();
+}
+
+function herbal_display_points_in_checkout_totals() {
+    herbal_display_points_totals_row();
+}
+
+function herbal_display_points_totals_row() {
+    if (!is_user_logged_in() || !WC()->cart || WC()->cart->is_empty()) {
+        return;
+    }
+
+    $total_points_cost = 0;
+    $total_points_earned = 0;
+    
+    // Calculate total points for entire cart
+    foreach (WC()->cart->get_cart() as $cart_item) {
+        $product_id = $cart_item['product_id'];
+        $quantity = $cart_item['quantity'];
+        
+        $points_cost = floatval(get_post_meta($product_id, 'price_point', true));
+        $points_earned = floatval(get_post_meta($product_id, 'point_earned', true));
+        
+        $total_points_cost += $points_cost * $quantity;
+        $total_points_earned += $points_earned * $quantity;
+    }
+
+    // Only show if there are any points
+    if ($total_points_cost <= 0 && $total_points_earned <= 0) {
+        return;
+    }
+
+    $user_id = get_current_user_id();
+    $user_points = floatval(get_user_meta($user_id, 'reward_points', true));
+
+    // Display in totals section (exactly where you wanted)
+    echo '<tr class="herbal-points-total-row">';
+    echo '<th style="border-top: 2px solid #ddd; padding-top: 10px;">🎯 Points Summary</th>';
+    echo '<td style="border-top: 2px solid #ddd; padding-top: 10px; text-align: right;">';
+    
+    if ($total_points_cost > 0) {
+        $can_afford = $user_points >= $total_points_cost;
+        $color = $can_afford ? 'green' : 'orange';
+        echo '<div style="margin-bottom: 5px;">💰 <strong>Alternative cost:</strong> <span style="color: ' . $color . ';">' . number_format($total_points_cost, 0) . ' pts</span></div>';
+    }
+    
+    if ($total_points_earned > 0) {
+        echo '<div style="margin-bottom: 5px;">🎁 <strong>You will earn:</strong> <span style="color: green;">' . number_format($total_points_earned, 0) . ' pts</span></div>';
+    }
+    
+    echo '<div style="font-size: 12px; color: #666;">👤 Your balance: ' . number_format($user_points, 0) . ' pts</div>';
+    
+    if ($total_points_cost > 0 && $user_points >= $total_points_cost) {
+        echo '<div style="margin-top: 5px; color: green; font-weight: bold;">✅ You can pay with points!</div>';
+    }
+    
+    echo '</td>';
+    echo '</tr>';
 }
 
 /**
@@ -434,26 +540,82 @@ function herbal_load_textdomain() {
     );
 }
 
-// === DEBUG FUNCTIONS (Remove in production) ===
+// === CSS STYLES FOR POINTS DISPLAY ===
+add_action('wp_head', 'herbal_points_totals_styles');
+
+function herbal_points_totals_styles() {
+    if (is_cart() || is_checkout()) {
+        ?>
+        <style>
+        .herbal-points-total-row th,
+        .herbal-points-total-row td {
+            border-top: 2px solid #ddd !important;
+            padding-top: 10px !important;
+            font-size: 14px;
+        }
+        
+        .herbal-points-total-row td > div {
+            line-height: 1.4;
+        }
+        
+        .herbal-points-total-row th {
+            font-weight: 600;
+        }
+        
+        /* Ensure proper spacing */
+        .herbal-points-total-row td {
+            vertical-align: top;
+        }
+        </style>
+        <?php
+    }
+}
+
+// === ENHANCED DEBUG FOR GATEWAY TIMING ===
 if (defined('WP_DEBUG') && WP_DEBUG) {
     
-    // Debug: Check payment gateway status
-    add_action('wp_footer', 'herbal_debug_payment_gateway_status');
-    
-    function herbal_debug_payment_gateway_status() {
-        if ((is_checkout() || is_cart()) && current_user_can('manage_options')) {
-            $gateway_loaded = class_exists('WC_Gateway_Points_Payment');
-            $wc_loaded = class_exists('WooCommerce');
-            $function_exists = function_exists('herbal_init_points_payment_gateway');
+    // Debug: Check timing and status
+    add_action('woocommerce_init', function() {
+        error_log('=== HERBAL TIMING DEBUG ===');
+        error_log('WooCommerce initialized, checking gateway status...');
+        error_log('WC_Gateway_Points_Payment class exists: ' . (class_exists('WC_Gateway_Points_Payment') ? 'YES' : 'NO'));
+        
+        // Check if WooCommerce payment gateways are available
+        if (WC() && WC()->payment_gateways) {
+            error_log('WC payment_gateways object exists: YES');
             
-            echo '<!-- Herbal Payment Gateway Debug -->';
-            echo '<script>console.log("Payment Gateway Debug:", {';
-            echo 'gatewayClassExists: ' . ($gateway_loaded ? 'true' : 'false') . ',';
-            echo 'wooCommerceLoaded: ' . ($wc_loaded ? 'true' : 'false') . ',';
-            echo 'initFunctionExists: ' . ($function_exists ? 'true' : 'false');
-            echo '});</script>';
+            // Try to get the list of gateways
+            $all_gateways = WC()->payment_gateways->payment_gateways;
+            if (is_array($all_gateways)) {
+                error_log('All gateway IDs: ' . implode(', ', array_keys($all_gateways)));
+                error_log('Points gateway in array: ' . (isset($all_gateways['points_payment']) ? 'YES' : 'NO'));
+            } else {
+                error_log('Payment gateways array is not ready yet');
+            }
+        } else {
+            error_log('WC payment_gateways object NOT ready');
         }
-    }
+    }, 999); // Late priority to see final state
+    
+    // Debug: Final check after everything loads
+    add_action('wp_loaded', function() {
+        if (is_admin() && current_user_can('manage_options')) {
+            if (WC() && WC()->payment_gateways) {
+                $available_gateways = WC()->payment_gateways->get_available_payment_gateways();
+                $points_available = isset($available_gateways['points_payment']);
+                
+                error_log('=== FINAL GATEWAY STATUS ===');
+                error_log('Available gateways after wp_loaded: ' . implode(', ', array_keys($available_gateways)));
+                error_log('Points gateway available: ' . ($points_available ? 'YES' : 'NO'));
+                
+                if ($points_available) {
+                    $pg = $available_gateways['points_payment'];
+                    error_log('Points gateway enabled: ' . $pg->enabled);
+                    error_log('Points gateway is_available(): ' . ($pg->is_available() ? 'YES' : 'NO'));
+                }
+            }
+        }
+    });
 }
 
 // === FLUSH REWRITE RULES IF NEEDED ===
