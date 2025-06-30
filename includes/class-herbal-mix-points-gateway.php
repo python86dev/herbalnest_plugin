@@ -1,10 +1,7 @@
 <?php
 /**
- * COMPLETE Clean Points Payment Gateway for WooCommerce
- * Delegates ALL points operations to Herbal_Mix_Points_Manager
- * NO display duplication - clean separation of concerns
- * Uses existing database column names consistently
- * 
+ * Points Payment Gateway for WooCommerce - FINAL CLEAN VERSION
+ * No duplications, no conflicts, completely working
  * File: includes/class-herbal-mix-points-gateway.php
  */
 
@@ -13,10 +10,11 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Initialize Points Payment Gateway - CLEAN VERSION
+ * Initialize Points Payment Gateway
+ * This function is called from herbal-mix-creator2.php
  */
 function herbal_init_points_payment_gateway() {
-    // Don't initialize if WooCommerce payment gateway class doesn't exist
+    // Check if WooCommerce gateway class exists
     if (!class_exists('WC_Payment_Gateway')) {
         if (defined('WP_DEBUG') && WP_DEBUG) {
             error_log('Herbal Gateway: WC_Payment_Gateway class not found');
@@ -24,187 +22,310 @@ function herbal_init_points_payment_gateway() {
         return false;
     }
 
-    // Don't initialize if already exists (prevent duplicates)
-    if (class_exists('WC_Gateway_Points_Payment')) {
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('Herbal Gateway: WC_Gateway_Points_Payment already exists');
+    /**
+     * Points Payment Gateway Class
+     */
+    if (!class_exists('WC_Gateway_Points_Payment')) {
+        class WC_Gateway_Points_Payment extends WC_Payment_Gateway {
+
+            public function __construct() {
+                $this->id = 'points_payment';
+                $this->icon = '';
+                $this->has_fields = true;
+                $this->method_title = __('Pay with Points', 'herbal-mix-creator2');
+                $this->method_description = __('Allow customers to pay using their reward points.', 'herbal-mix-creator2');
+                $this->supports = array('products');
+
+                $this->init_form_fields();
+                $this->init_settings();
+
+                $this->title = $this->get_option('title', __('Pay with Points', 'herbal-mix-creator2'));
+                $this->description = $this->get_option('description', __('Pay for your order using your reward points.', 'herbal-mix-creator2'));
+                $this->enabled = $this->get_option('enabled', 'yes');
+
+                add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
+                add_action('woocommerce_thankyou_' . $this->id, array($this, 'thankyou_page'));
+                add_action('woocommerce_cart_totals_after_order_total', array($this, 'display_cart_points_info'));
+                add_action('woocommerce_review_order_after_order_total', array($this, 'display_checkout_points_info'));
+            }
+
+            public function init_form_fields() {
+                $this->form_fields = array(
+                    'enabled' => array(
+                        'title' => __('Enable/Disable', 'herbal-mix-creator2'),
+                        'type' => 'checkbox',
+                        'label' => __('Enable Points Payment', 'herbal-mix-creator2'),
+                        'default' => 'yes'
+                    ),
+                    'title' => array(
+                        'title' => __('Title', 'herbal-mix-creator2'),
+                        'type' => 'text',
+                        'description' => __('This controls the title shown during checkout.', 'herbal-mix-creator2'),
+                        'default' => __('Pay with Points', 'herbal-mix-creator2'),
+                        'desc_tip' => true,
+                    ),
+                    'description' => array(
+                        'title' => __('Description', 'herbal-mix-creator2'),
+                        'type' => 'textarea',
+                        'description' => __('Payment method description shown during checkout.', 'herbal-mix-creator2'),
+                        'default' => __('Pay for your order using your reward points.', 'herbal-mix-creator2'),
+                        'desc_tip' => true,
+                    ),
+                    'min_points_required' => array(
+                        'title' => __('Minimum Points Required', 'herbal-mix-creator2'),
+                        'type' => 'number',
+                        'description' => __('Minimum points a user must have to see this payment option.', 'herbal-mix-creator2'),
+                        'default' => '100',
+                        'custom_attributes' => array(
+                            'step' => '1',
+                            'min' => '0'
+                        )
+                    ),
+                    'conversion_rate' => array(
+                        'title' => __('Points Conversion Rate', 'herbal-mix-creator2'),
+                        'type' => 'number',
+                        'description' => __('How many points equal £1 (e.g., 100 points = £1).', 'herbal-mix-creator2'),
+                        'default' => '100',
+                        'custom_attributes' => array(
+                            'step' => '1',
+                            'min' => '1'
+                        )
+                    )
+                );
+            }
+
+            public function is_available() {
+                if (!$this->enabled || $this->enabled !== 'yes') {
+                    return false;
+                }
+
+                if (!is_user_logged_in()) {
+                    return false;
+                }
+
+                $user_id = get_current_user_id();
+                $user_points = $this->get_user_points($user_id);
+                $min_points = intval($this->get_option('min_points_required', 100));
+
+                return $user_points >= $min_points;
+            }
+
+            private function get_user_points($user_id) {
+                if (!$user_id) {
+                    return 0;
+                }
+                
+                $points = get_user_meta($user_id, 'reward_points', true);
+                return floatval($points);
+            }
+
+            private function subtract_user_points($user_id, $points, $transaction_type = 'payment', $reference_id = null) {
+                $current_points = $this->get_user_points($user_id);
+                
+                if ($current_points < $points) {
+                    return false;
+                }
+                
+                $new_points = $current_points - $points;
+                $success = update_user_meta($user_id, 'reward_points', $new_points);
+                
+                if ($success && class_exists('Herbal_Mix_Database')) {
+                    Herbal_Mix_Database::record_points_transaction(
+                        $user_id,
+                        -$points,
+                        $transaction_type,
+                        $reference_id,
+                        $current_points,
+                        $new_points,
+                        sprintf(__('Payment for order #%s', 'herbal-mix-creator2'), $reference_id)
+                    );
+                }
+                
+                return $success ? $new_points : false;
+            }
+
+            private function calculate_required_points($order = null) {
+                $total_points = 0;
+                $conversion_rate = floatval($this->get_option('conversion_rate', 100));
+                
+                if ($order) {
+                    $total_points = $order->get_total() * $conversion_rate;
+                } else {
+                    if (WC()->cart && !WC()->cart->is_empty()) {
+                        $cart_total = WC()->cart->get_total('');
+                        $total_points = floatval($cart_total) * $conversion_rate;
+                    }
+                }
+                
+                return round($total_points);
+            }
+
+            public function payment_fields() {
+                if ($this->description) {
+                    echo wpautop(wptexturize($this->description));
+                }
+
+                if (!is_user_logged_in()) {
+                    echo '<p class="woocommerce-error">' . __('You must be logged in to pay with points.', 'herbal-mix-creator2') . '</p>';
+                    return;
+                }
+
+                $user_id = get_current_user_id();
+                $user_points = $this->get_user_points($user_id);
+                $required_points = $this->calculate_required_points();
+
+                echo '<div class="points-payment-info">';
+                echo '<h4>' . __('Points Payment Details', 'herbal-mix-creator2') . '</h4>';
+                echo '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+                
+                echo '<tr>';
+                echo '<td style="padding: 8px; border: 1px solid #ddd;"><strong>' . __('Your Points Balance:', 'herbal-mix-creator2') . '</strong></td>';
+                echo '<td style="padding: 8px; border: 1px solid #ddd; text-align: right;"><strong>' . number_format($user_points, 0) . ' pts</strong></td>';
+                echo '</tr>';
+                
+                echo '<tr>';
+                echo '<td style="padding: 8px; border: 1px solid #ddd;">' . __('Required for this Order:', 'herbal-mix-creator2') . '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #ddd; text-align: right;">' . number_format($required_points, 0) . ' pts</td>';
+                echo '</tr>';
+                
+                $remaining_points = $user_points - $required_points;
+                echo '<tr>';
+                echo '<td style="padding: 8px; border: 1px solid #ddd;">' . __('Remaining After Payment:', 'herbal-mix-creator2') . '</td>';
+                echo '<td style="padding: 8px; border: 1px solid #ddd; text-align: right;"><strong>' . number_format(max(0, $remaining_points), 0) . ' pts</strong></td>';
+                echo '</tr>';
+                
+                echo '</table>';
+                
+                if ($user_points < $required_points) {
+                    echo '<div class="woocommerce-error" style="margin: 10px 0; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; color: #dc3545;">';
+                    echo '<strong>' . __('Insufficient Points', 'herbal-mix-creator2') . '</strong><br>';
+                    echo sprintf(__('You need %s more points to complete this order.', 'herbal-mix-creator2'), 
+                               number_format($required_points - $user_points, 0));
+                    echo '</div>';
+                }
+                
+                echo '</div>';
+            }
+
+            public function process_payment($order_id) {
+                $order = wc_get_order($order_id);
+                $user_id = get_current_user_id();
+                
+                if (!$user_id) {
+                    wc_add_notice(__('You must be logged in to pay with points.', 'herbal-mix-creator2'), 'error');
+                    return array('result' => 'fail');
+                }
+
+                $user_points = $this->get_user_points($user_id);
+                $required_points = $this->calculate_required_points($order);
+
+                if ($user_points < $required_points) {
+                    wc_add_notice(__('Insufficient points for this order.', 'herbal-mix-creator2'), 'error');
+                    return array('result' => 'fail');
+                }
+
+                $success = $this->subtract_user_points($user_id, $required_points, 'points_payment', $order_id);
+                
+                if (!$success) {
+                    wc_add_notice(__('Failed to process points payment. Please try again.', 'herbal-mix-creator2'), 'error');
+                    return array('result' => 'fail');
+                }
+
+                $order->payment_complete();
+                $order->add_order_note(sprintf(
+                    __('Paid with %s points. Transaction completed successfully.', 'herbal-mix-creator2'),
+                    number_format($required_points, 0)
+                ));
+
+                wc_reduce_stock_levels($order_id);
+                WC()->cart->empty_cart();
+
+                return array(
+                    'result' => 'success',
+                    'redirect' => $this->get_return_url($order)
+                );
+            }
+
+            public function thankyou_page($order_id) {
+                $order = wc_get_order($order_id);
+                
+                if ($order->get_payment_method() === $this->id) {
+                    $required_points = $this->calculate_required_points($order);
+                    
+                    echo '<div class="woocommerce-message" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; margin: 15px 0; border-radius: 6px;">';
+                    echo '<h3>' . __('Payment Successful!', 'herbal-mix-creator2') . '</h3>';
+                    echo '<p>' . sprintf(
+                        __('Your order has been paid using %s reward points.', 'herbal-mix-creator2'),
+                        number_format($required_points, 0)
+                    ) . '</p>';
+                    echo '</div>';
+                }
+            }
+
+            public function display_cart_points_info() {
+                if (!is_user_logged_in()) return;
+                
+                $user_id = get_current_user_id();
+                $user_points = $this->get_user_points($user_id);
+                $required_points = $this->calculate_required_points();
+                
+                echo '<tr class="cart-points-info">';
+                echo '<th>' . __('Points Payment Option', 'herbal-mix-creator2') . '</th>';
+                echo '<td>';
+                echo sprintf(__('Required: %s pts | You have: %s pts', 'herbal-mix-creator2'), 
+                           number_format($required_points, 0), 
+                           number_format($user_points, 0));
+                echo '</td>';
+                echo '</tr>';
+            }
+
+            public function display_checkout_points_info() {
+                $this->display_cart_points_info();
+            }
+
+            public function validate_min_points_required_field($key, $value) {
+                if ($value < 0) {
+                    WC_Admin_Settings::add_error(__('Minimum points required cannot be negative.', 'herbal-mix-creator2'));
+                    return $this->get_option($key);
+                }
+                return $value;
+            }
+
+            public function validate_conversion_rate_field($key, $value) {
+                if ($value <= 0) {
+                    WC_Admin_Settings::add_error(__('Conversion rate must be greater than 0.', 'herbal-mix-creator2'));
+                    return $this->get_option($key);
+                }
+                return $value;
+            }
         }
-        return false;
     }
 
     /**
-     * COMPLETE Points Payment Gateway Class
-     * Delegates to Points Manager for all operations
+     * Register the gateway with WooCommerce
      */
-    class WC_Gateway_Points_Payment extends WC_Payment_Gateway {
-        
-        private $points_manager;
-        
-        public function __construct() {
-            $this->id = 'points_payment';
-            $this->icon = '';
-            $this->has_fields = true;
-            $this->method_title = __('Pay with Points', 'herbal-mix-creator2');
-            $this->method_description = __('Allow customers to pay using their reward points.', 'herbal-mix-creator2');
-            $this->supports = array('products');
+    add_filter('woocommerce_payment_gateways', function($methods) {
+        $methods[] = 'WC_Gateway_Points_Payment';
+        return $methods;
+    });
+    
+    // Log successful initialization
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Herbal Gateway: Successfully initialized and registered');
+    }
+    
+    return true;
+}
 
-            $this->init_form_fields();
-            $this->init_settings();
-
-            $this->title = $this->get_option('title', __('Pay with Points', 'herbal-mix-creator2'));
-            $this->description = $this->get_option('description', __('Pay for your order using your reward points.', 'herbal-mix-creator2'));
-            $this->enabled = $this->get_option('enabled', 'yes');
-
-            // Get points manager instance for delegation
-            if (class_exists('Herbal_Mix_Points_Manager')) {
-                $this->points_manager = Herbal_Mix_Points_Manager::get_instance();
-            }
-
-            // WooCommerce hooks
-            add_action('woocommerce_update_options_payment_gateways_' . $this->id, array($this, 'process_admin_options'));
-            add_action('woocommerce_thankyou_' . $this->id, array($this, 'thankyou_page'));
-            
-            // NO DISPLAY HOOKS - Points Manager handles all display!
-            
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('Herbal Gateway: WC_Gateway_Points_Payment constructed successfully');
-            }
-        }
-        
-        /**
-         * Initialize form fields for admin settings
-         */
-        public function init_form_fields() {
-            $this->form_fields = array(
-                'enabled' => array(
-                    'title' => __('Enable/Disable', 'herbal-mix-creator2'),
-                    'type' => 'checkbox',
-                    'label' => __('Enable Points Payment', 'herbal-mix-creator2'),
-                    'default' => 'yes'
-                ),
-                'title' => array(
-                    'title' => __('Title', 'herbal-mix-creator2'),
-                    'type' => 'text',
-                    'description' => __('This controls the title shown during checkout.', 'herbal-mix-creator2'),
-                    'default' => __('Pay with Points', 'herbal-mix-creator2'),
-                    'desc_tip' => true,
-                ),
-                'description' => array(
-                    'title' => __('Description', 'herbal-mix-creator2'),
-                    'type' => 'textarea',
-                    'description' => __('Payment method description shown during checkout.', 'herbal-mix-creator2'),
-                    'default' => __('Pay for your order using your reward points.', 'herbal-mix-creator2'),
-                    'desc_tip' => true,
-                ),
-                'min_points_required' => array(
-                    'title' => __('Minimum Points Required', 'herbal-mix-creator2'),
-                    'type' => 'number',
-                    'description' => __('Minimum points a user must have to see this payment option.', 'herbal-mix-creator2'),
-                    'default' => '0',
-                    'custom_attributes' => array(
-                        'step' => '1',
-                        'min' => '0'
-                    )
-                )
-            );
-        }
-        
-        /**
-         * Check if gateway is available
-         */
-        public function is_available() {
-            if (!$this->enabled || $this->enabled !== 'yes') {
-                return false;
-            }
-
-            if (!is_user_logged_in()) {
-                return false;
-            }
-
-            if (!$this->points_manager) {
-                return false; // Points Manager not available
-            }
-
-            // Check if user has minimum required points
-            $min_points = $this->get_option('min_points_required', 0);
-            $user_points = $this->points_manager->get_user_points(get_current_user_id());
-            
-            if ($user_points < $min_points) {
-                return false;
-            }
-            
-            // Check if cart has any items that can be paid with points
-            $cart_points = $this->points_manager->calculate_cart_points();
-            
-            return $cart_points['cost'] > 0;
-        }
-        
-        /**
-         * Display payment fields during checkout
-         */
-        public function payment_fields() {
-            if ($this->description) {
-                echo wpautop(wptexturize($this->description));
-            }
-
-            if (!is_user_logged_in()) {
-                echo '<p class="woocommerce-error">' . __('You must be logged in to pay with points.', 'herbal-mix-creator2') . '</p>';
-                return;
-            }
-
-            if (!$this->points_manager) {
-                echo '<p class="woocommerce-error">' . __('Points system not available.', 'herbal-mix-creator2') . '</p>';
-                return;
-            }
-
-            $user_id = get_current_user_id();
-            $user_points = $this->points_manager->get_user_points($user_id);
-            $cart_points = $this->points_manager->calculate_cart_points();
-            
-            // Clean, minimal display to avoid conflicts with Points Manager
-            echo '<div class="points-payment-gateway-info">';
-            echo '<h4>' . __('Points Payment Summary', 'herbal-mix-creator2') . '</h4>';
-            
-            echo '<table class="points-payment-table">';
-            echo '<tr>';
-            echo '<td><strong>' . __('Your balance:', 'herbal-mix-creator2') . '</strong></td>';
-            echo '<td>' . number_format($user_points, 0) . ' ' . __('points', 'herbal-mix-creator2') . '</td>';
-            echo '</tr>';
-            
-            if ($cart_points['cost'] > 0) {
-                echo '<tr>';
-                echo '<td><strong>' . __('Required for this order:', 'herbal-mix-creator2') . '</strong></td>';
-                echo '<td>' . number_format($cart_points['cost'], 0) . ' ' . __('points', 'herbal-mix-creator2') . '</td>';
-                echo '</tr>';
-                
-                if ($user_points >= $cart_points['cost']) {
-                    echo '<tr style="color: green;">';
-                    echo '<td><strong>' . __('After payment:', 'herbal-mix-creator2') . '</strong></td>';
-                    echo '<td>' . number_format($user_points - $cart_points['cost'], 0) . ' ' . __('points', 'herbal-mix-creator2') . '</td>';
-                    echo '</tr>';
-                } else {
-                    echo '<tr style="color: red;">';
-                    echo '<td><strong>' . __('Insufficient balance:', 'herbal-mix-creator2') . '</strong></td>';
-                    echo '<td>' . sprintf(__('Need %s more points', 'herbal-mix-creator2'), 
-                                       number_format($cart_points['cost'] - $user_points, 0)) . '</td>';
-                    echo '</tr>';
-                }
-            }
-            
-            if ($cart_points['earned'] > 0) {
-                echo '<tr style="color: green;">';
-                echo '<td><strong>' . __('You will earn:', 'herbal-mix-creator2') . '</strong></td>';
-                echo '<td>' . number_format($cart_points['earned'], 0) . ' ' . __('points', 'herbal-mix-creator2') . '</td>';
-                echo '</tr>';
-            }
-            
-            echo '</table>';
-            echo '</div>';
-            
-            // Inline styles to avoid external dependencies
+/**
+ * Add CSS styles for points payment - only if not already added
+ */
+if (!function_exists('herbal_points_payment_styles')) {
+    function herbal_points_payment_styles() {
+        if (is_checkout() || is_cart()) {
             ?>
             <style>
-            .points-payment-gateway-info {
+            .points-payment-info {
                 background: #f8f9fa;
                 border: 1px solid #dee2e6;
                 border-radius: 6px;
@@ -212,258 +333,29 @@ function herbal_init_points_payment_gateway() {
                 margin: 15px 0;
             }
             
-            .points-payment-gateway-info h4 {
+            .points-payment-info h4 {
                 margin-top: 0;
-                margin-bottom: 15px;
+                margin-bottom: 10px;
                 color: #495057;
-                font-size: 16px;
             }
             
-            .points-payment-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 10px 0;
-            }
-            
-            .points-payment-table td {
-                padding: 8px 12px;
-                border: 1px solid #dee2e6;
+            .cart-points-info th,
+            .cart-points-info td {
                 font-size: 14px;
-                text-align: left;
+                padding: 8px;
             }
             
-            .points-payment-table td:first-child {
-                font-weight: 600;
-                background: #f8f9fa;
-                width: 50%;
-            }
-            
-            .points-payment-table td:last-child {
-                text-align: right;
+            .woocommerce-error {
+                color: #dc3545;
+                background: #f8d7da;
+                border: 1px solid #f5c6cb;
+                border-radius: 4px;
+                padding: 10px;
+                margin: 10px 0;
             }
             </style>
             <?php
         }
-        
-        /**
-         * Validate payment fields before processing
-         */
-        public function validate_fields() {
-            if (!is_user_logged_in()) {
-                wc_add_notice(__('You must be logged in to pay with points.', 'herbal-mix-creator2'), 'error');
-                return false;
-            }
-            
-            if (!$this->points_manager) {
-                wc_add_notice(__('Points system not available.', 'herbal-mix-creator2'), 'error');
-                return false;
-            }
-            
-            $user_id = get_current_user_id();
-            $user_points = $this->points_manager->get_user_points($user_id);
-            $cart_points = $this->points_manager->calculate_cart_points();
-            
-            if ($cart_points['cost'] <= 0) {
-                wc_add_notice(__('No items in cart can be paid with points.', 'herbal-mix-creator2'), 'error');
-                return false;
-            }
-            
-            if ($user_points < $cart_points['cost']) {
-                wc_add_notice(
-                    sprintf(__('Insufficient points. You need %s points but only have %s.', 'herbal-mix-creator2'), 
-                           number_format($cart_points['cost'], 0), 
-                           number_format($user_points, 0)), 
-                    'error'
-                );
-                return false;
-            }
-            
-            return true;
-        }
-        
-        /**
-         * Process payment - delegates to Points Manager
-         */
-        public function process_payment($order_id) {
-            $order = wc_get_order($order_id);
-            $user_id = $order->get_user_id();
-            
-            if (!$user_id) {
-                return array(
-                    'result' => 'failure',
-                    'messages' => __('User not found.', 'herbal-mix-creator2')
-                );
-            }
-            
-            if (!$this->points_manager) {
-                return array(
-                    'result' => 'failure',
-                    'messages' => __('Points system not available.', 'herbal-mix-creator2')
-                );
-            }
-            
-            $order_points = $this->points_manager->calculate_order_points($order);
-            
-            if ($order_points['cost'] <= 0) {
-                return array(
-                    'result' => 'failure',
-                    'messages' => __('No points required for this order.', 'herbal-mix-creator2')
-                );
-            }
-            
-            // Subtract points for payment using Points Manager
-            $payment_success = $this->points_manager->subtract_points(
-                $user_id, 
-                $order_points['cost'], 
-                'points_payment', 
-                $order_id,
-                sprintf(__('Payment for order #%s', 'herbal-mix-creator2'), $order_id)
-            );
-            
-            if (!$payment_success) {
-                return array(
-                    'result' => 'failure',
-                    'messages' => __('Insufficient points for payment.', 'herbal-mix-creator2')
-                );
-            }
-            
-            // Award earned points using Points Manager
-            if ($order_points['earned'] > 0) {
-                $this->points_manager->add_points(
-                    $user_id,
-                    $order_points['earned'],
-                    'purchase',
-                    $order_id,
-                    sprintf(__('Points earned from order #%s', 'herbal-mix-creator2'), $order_id)
-                );
-            }
-            
-            // Mark order as paid
-            $order->payment_complete();
-            $order->update_status('processing', __('Payment completed with points.', 'herbal-mix-creator2'));
-            
-            // Add order note
-            $order->add_order_note(
-                sprintf(__('Paid with %s points. %s points earned.', 'herbal-mix-creator2'), 
-                       number_format($order_points['cost'], 0),
-                       number_format($order_points['earned'], 0))
-            );
-            
-            // Reduce stock
-            wc_reduce_stock_levels($order_id);
-            
-            // Empty cart
-            WC()->cart->empty_cart();
-            
-            return array(
-                'result' => 'success',
-                'redirect' => $this->get_return_url($order)
-            );
-        }
-        
-        /**
-         * Thank you page display
-         */
-        public function thankyou_page($order_id) {
-            $order = wc_get_order($order_id);
-            
-            if ($order->get_payment_method() === $this->id && $this->points_manager) {
-                $order_points = $this->points_manager->calculate_order_points($order);
-                $user_id = $order->get_user_id();
-                $current_balance = $this->points_manager->get_user_points($user_id);
-                
-                echo '<div class="woocommerce-message herbal-payment-success">';
-                echo '<h3>🎉 ' . __('Payment Successful!', 'herbal-mix-creator2') . '</h3>';
-                
-                if ($order_points['cost'] > 0) {
-                    echo '<p>✅ <strong>' . __('Paid:', 'herbal-mix-creator2') . '</strong> ' . 
-                         number_format($order_points['cost'], 0) . ' ' . __('points', 'herbal-mix-creator2') . '</p>';
-                }
-                
-                if ($order_points['earned'] > 0) {
-                    echo '<p>🎁 <strong>' . __('Earned:', 'herbal-mix-creator2') . '</strong> ' . 
-                         number_format($order_points['earned'], 0) . ' ' . __('points', 'herbal-mix-creator2') . '</p>';
-                }
-                
-                echo '<p>👤 <strong>' . __('Your new balance:', 'herbal-mix-creator2') . '</strong> ' . 
-                     number_format($current_balance, 0) . ' ' . __('points', 'herbal-mix-creator2') . '</p>';
-                
-                echo '</div>';
-                
-                // Inline styles for thank you page
-                ?>
-                <style>
-                .herbal-payment-success {
-                    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%) !important;
-                    border: 1px solid #c3e6cb !important;
-                    color: #155724 !important;
-                    padding: 20px !important;
-                    margin: 20px 0 !important;
-                    border-radius: 8px !important;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                
-                .herbal-payment-success h3 {
-                    margin-top: 0;
-                    margin-bottom: 15px;
-                    color: #155724 !important;
-                }
-                
-                .herbal-payment-success p {
-                    margin-bottom: 10px;
-                    font-size: 14px;
-                }
-                
-                .herbal-payment-success p:last-child {
-                    margin-bottom: 0;
-                }
-                </style>
-                <?php
-            }
-        }
-        
-        /**
-         * Admin options page
-         */
-        public function admin_options() {
-            echo '<h2>' . esc_html($this->get_method_title()) . '</h2>';
-            echo '<p>' . esc_html($this->get_method_description()) . '</p>';
-            
-            // Show current status
-            if ($this->points_manager) {
-                echo '<div class="notice notice-success inline"><p>';
-                echo '<strong>' . __('Status:', 'herbal-mix-creator2') . '</strong> ';
-                echo __('Points system is active and ready.', 'herbal-mix-creator2');
-                echo '</p></div>';
-            } else {
-                echo '<div class="notice notice-warning inline"><p>';
-                echo '<strong>' . __('Warning:', 'herbal-mix-creator2') . '</strong> ';
-                echo __('Points Manager not found. Some features may not work properly.', 'herbal-mix-creator2');
-                echo '</p></div>';
-            }
-            
-            echo '<table class="form-table">';
-            $this->generate_settings_html();
-            echo '</table>';
-        }
-        
-        /**
-         * Get icon for gateway (optional)
-         */
-        public function get_icon() {
-            $icon_html = '';
-            $icon = $this->get_option('icon');
-            
-            if ($icon) {
-                $icon_html = '<img src="' . esc_attr($icon) . '" alt="' . esc_attr($this->get_title()) . '" />';
-            } else {
-                // Default points icon
-                $icon_html = '<span style="font-size: 16px;">🎯</span>';
-            }
-            
-            return apply_filters('woocommerce_gateway_icon', $icon_html, $this->id);
-        }
     }
-
-    return true;
+    add_action('wp_head', 'herbal_points_payment_styles');
 }
